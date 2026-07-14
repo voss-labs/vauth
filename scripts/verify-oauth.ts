@@ -47,7 +47,7 @@ async function main() {
   // 2. The registered client
   const rows = (await sql()`
     SELECT client_id, name, redirect_uris, skip_consent, require_pkce
-    FROM oauth_client WHERE disabled = false ORDER BY created_at LIMIT 1
+    FROM oauth_client WHERE client_id = ${process.env.VERIFY_CLIENT_ID} LIMIT 1
   `) as any[];
   if (!rows.length)
     return fail("no OAuth client registered — run `npm run clients`");
@@ -114,9 +114,21 @@ async function main() {
     headers: { cookie },
     redirect: "manual",
   });
-  const location = authRes.headers.get("location");
+
+  // better-auth 302s a browser but returns {redirect, url} to an API-style
+  // caller. A relying party must handle whichever it gets, so we do too.
+  let location = authRes.headers.get("location");
   if (!location) {
-    fail(`authorize did not redirect (${authRes.status})`);
+    const body = await authRes.clone().text();
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed?.redirect && typeof parsed.url === "string") location = parsed.url;
+    } catch {
+      /* not JSON */
+    }
+  }
+  if (!location) {
+    fail(`authorize neither redirected nor returned a redirect URL (${authRes.status})`);
     info((await authRes.text()).slice(0, 200));
     process.exit(1);
   }
