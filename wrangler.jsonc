@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "voss-auth",
+  "name": "vauth",
   "main": "./workers/app.ts",
   "compatibility_date": "2026-07-14",
   // nodejs_compat is required: better-auth reaches for node:crypto and
@@ -10,6 +10,21 @@
     "enabled": true
   },
   "vars": {
-    "BETTER_AUTH_URL": "http://localhost:5173"
-  }
+    // The OIDC issuer is derived from this, so it MUST equal the origin the
+    // worker is actually served from. Get it wrong and discovery advertises
+    // endpoints that 404, and every relying party silently fails to find us.
+    // Local dev overrides this via .dev.vars, which takes precedence.
+    "BETTER_AUTH_URL": "https://accounts.vosslabs.org",
+
+    // Not a secret. Deliberately not no-reply: passwordless makes email the only
+    // door in, so a student who never gets their code will hit Reply, and that
+    // has to reach a human.
+    "EMAIL_FROM": "VOSS Labs <accounts@vosslabs.org>"
+  },
+  "routes": [
+    {
+      "pattern": "accounts.vosslabs.org",
+      "custom_domain": true
+    }
+  ]
 }

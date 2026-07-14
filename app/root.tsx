@@ -11,6 +11,12 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import { VossMark } from "~/components/voss-mark";
 
+export const links: Route.LinksFunction = () => [
+  { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+  { rel: "icon", href: "/favicon-32.png", sizes: "32x32" },
+  { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+];
+
 // No web-font CDN. Geist is bundled via @fontsource-variable/geist, so the login
 // page never blocks on a third-party request — this is the one screen that has to
 // render on a bad campus connection.
