@@ -14,7 +14,9 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "clients": "tsx scripts/clients.ts",
-    "clients:add": "tsx scripts/clients.ts --add"
+    "clients:add": "tsx scripts/clients.ts --add",
+    "bootstrap": "tsx scripts/bootstrap.ts",
+    "clients:verify": "tsx scripts/verify-oauth.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -44,6 +46,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "drizzle-kit": "^0.31.10",
+    "jose": "^6.2.3",
     "picocolors": "^1.1.1",
     "tailwindcss": "^4.2.2",
     "tsx": "^4.23.1",

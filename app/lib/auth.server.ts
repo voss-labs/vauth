@@ -6,7 +6,7 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
 
-import * as schema from "~/db/schema";
+import * as schema from "~/db";
 import {
   ADMIN_ROLES,
   ALLOWED_EMAIL_DOMAIN,
