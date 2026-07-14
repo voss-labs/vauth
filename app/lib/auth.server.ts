@@ -180,6 +180,12 @@ function buildAuth() {
       oauthProvider({
         loginPage: "/sign-in",
         consentPage: "/consent",
+
+        // A false alarm: routes/well-known.ts DOES serve
+        // /.well-known/oauth-authorization-server/api/auth (verified 200 in
+        // production). better-auth cannot see routes mounted outside its own
+        // handler, so it warns on every single discovery request.
+        silenceWarnings: { oauthAuthServerConfig: true },
       }),
     ],
   });
