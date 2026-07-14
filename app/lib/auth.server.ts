@@ -78,6 +78,22 @@ function buildAuth() {
     // The jwt plugin mounts /token, which collides with /oauth2/token.
     disabledPaths: ["/token"],
 
+    advanced: {
+      ipAddress: {
+        // Not cosmetic. Without a resolvable client IP, better-auth's rate
+        // limiter falls back to ONE SHARED BUCKET for every caller — so a single
+        // attacker spamming OTP requests would exhaust the allowance the whole
+        // college shares. On a passwordless system that is the primary abuse
+        // vector, so this is the control that stops it.
+        //
+        // cf-connecting-ip is the only header worth trusting here: Cloudflare
+        // overwrites it on every request, so a client cannot forge it. Trusting
+        // x-forwarded-for instead would let anyone spoof their way into a fresh
+        // rate-limit bucket per request.
+        ipAddressHeaders: ["cf-connecting-ip"],
+      },
+    },
+
     user: {
       additionalFields: {
         // Survives graduation. VIT revokes @vit.edu.in on a known date, and with
