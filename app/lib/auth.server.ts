@@ -38,7 +38,7 @@ function buildDb() {
   return drizzle(neon(url), { schema });
 }
 
-function getDb() {
+export function getDb() {
   return (dbInstance ??= buildDb());
 }
 

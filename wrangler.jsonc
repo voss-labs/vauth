@@ -9,6 +9,13 @@
   "observability": {
     "enabled": true
   },
+  "assets": {
+    // Without this the asset layer answers first and returns 405 to every
+    // non-GET request whose path collides with an asset route — which silently
+    // breaks every form POST in the app, including the account page. Hashed
+    // build assets are excluded so they stay free and never invoke the Worker.
+    "run_worker_first": ["/*", "!/assets/*"]
+  },
   "vars": {
     // The OIDC issuer is derived from this, so it MUST equal the origin the
     // worker is actually served from. Get it wrong and discovery advertises

@@ -16,7 +16,8 @@
     "clients": "tsx scripts/clients.ts",
     "clients:add": "tsx scripts/clients.ts --add",
     "bootstrap": "tsx scripts/bootstrap.ts",
-    "clients:verify": "tsx scripts/verify-oauth.ts"
+    "clients:verify": "tsx scripts/verify-oauth.ts",
+    "manage": "tsx scripts/manage.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
