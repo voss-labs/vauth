@@ -90,8 +90,11 @@ export async function action({ request }: Route.ActionArgs) {
         // roll number is not: vauth holds no roster, so it could never verify one,
         // and an unverified self-claimed roll number is worse than none. That
         // binding belongs in the product, against the roster it actually has.
-        const name = String(form.get("name") ?? "").trim().slice(0, 80);
-        if (!name) return { error: "Name cannot be empty.", step: null, done: null };
+        const name = String(form.get("name") ?? "")
+          .trim()
+          .slice(0, 80);
+        if (!name)
+          return { error: "Name cannot be empty.", step: null, done: null };
         await db
           .update(schema.user)
           .set({ name })
@@ -104,7 +107,7 @@ export async function action({ request }: Route.ActionArgs) {
           db,
           schema,
           session.user.id,
-          String(form.get("recoveryEmail") ?? "")
+          String(form.get("recoveryEmail") ?? ""),
         );
         return { error: null, step: "code" as const, done: null };
 
@@ -113,7 +116,7 @@ export async function action({ request }: Route.ActionArgs) {
           db,
           schema,
           session.user.id,
-          String(form.get("code") ?? "")
+          String(form.get("code") ?? ""),
         );
         await audit(db, {
           action: "user.recovery_email_verified",
@@ -192,23 +195,30 @@ export default function Account({
       <div className="voss-grid pointer-events-none absolute inset-0" />
       <div className="voss-glow pointer-events-none absolute inset-0" />
 
-      <div className="voss-rise relative mx-auto w-full max-w-4xl px-6 py-14">
+      <div className="voss-rise relative mx-auto w-full max-w-5xl px-6 py-12">
         {/* Header ------------------------------------------------------- */}
-        <header className="flex flex-wrap items-start justify-between gap-6">
+        <header className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <VossMark
               status={error ? "error" : busy ? "busy" : "ok"}
               className="mb-6"
             />
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {name || "Your account"}
-            </h1>
+            <div className="flex flex-wrap items-baseline gap-3">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {name || "Your account"}
+              </h1>
+              {role !== "user" && (
+                <span className="border-primary/40 bg-primary/10 text-primary rounded-full border px-2.5 py-0.5 font-mono text-xs">
+                  {role}
+                </span>
+              )}
+            </div>
             <p className="text-muted-foreground mt-1 font-mono text-sm">
               {email}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {isAdmin && (
               <Link
                 to="/admin"
@@ -237,10 +247,14 @@ export default function Account({
           </p>
         )}
 
-        {/* Row 1: identity + recovery ----------------------------------- */}
-        <div className="mt-10 grid gap-5 md:grid-cols-2">
+        {/* A 12-column grid rather than one narrow stack. Everything a student
+            might want lands above the fold — the point of an account page is to
+            be read at a glance, not scrolled. */}
+        <div className="mt-9 grid gap-5 lg:grid-cols-12">
+          {/* Profile ---------------------------------------------------- */}
           <Panel
             title="Profile"
+            className="lg:col-span-5"
             action={
               !editingName && (
                 <button
@@ -293,23 +307,19 @@ export default function Account({
                 <Row label="College email">
                   <span className="font-mono text-xs">{email}</span>
                 </Row>
-                <Row label="Central role">
-                  <span
-                    className={
-                      role === "user"
-                        ? "font-mono text-xs"
-                        : "text-primary font-mono text-xs"
-                    }
-                  >
-                    {role}
+                <Row label="Sign-in method">
+                  <span className="text-muted-foreground text-xs">
+                    Emailed code &mdash; no password
                   </span>
                 </Row>
               </>
             )}
           </Panel>
 
+          {/* Recovery --------------------------------------------------- */}
           <Panel
             title="Recovery email"
+            className="lg:col-span-7"
             action={
               recoveryEmail &&
               !editingRecovery && (
@@ -324,53 +334,60 @@ export default function Account({
             }
           >
             {!editingRecovery && recoveryEmail && (
-              <>
-                <p className="font-mono text-sm break-all">{recoveryEmail}</p>
-                <p className="text-muted-foreground/60 mt-3 text-xs leading-relaxed">
-                  Verified. This is how you keep the account after your college
-                  email is revoked.
-                </p>
-              </>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-sm">{recoveryEmail}</p>
+                  <p className="text-muted-foreground/60 mt-1.5 text-xs leading-relaxed">
+                    How you keep this account after the college revokes your
+                    email.
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-500">
+                  Verified
+                </span>
+              </div>
             )}
 
             {!editingRecovery && !recoveryEmail && (
-              <>
-                <p className="text-muted-foreground text-xs leading-relaxed">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <p className="text-muted-foreground min-w-0 text-xs leading-relaxed">
                   Your college email stops working when you graduate, and there
                   is no password to fall back on. Without a personal address,
                   you lose this account on a known date.
                 </p>
                 <Button
                   variant="outline"
-                  className="mt-4 h-9 w-full text-xs"
+                  className="h-9 shrink-0 text-xs"
                   onClick={() => setEditingRecovery(true)}
                 >
-                  Add a recovery email
+                  Add one
                 </Button>
-              </>
+              </div>
             )}
 
             {editingRecovery && !showCode && (
-              <Form method="post">
+              <Form method="post" className="flex flex-wrap items-start gap-3">
                 <input type="hidden" name="intent" value="send-code" />
-                <Input
-                  name="recoveryEmail"
-                  type="email"
-                  autoFocus
-                  required
-                  placeholder="you@gmail.com"
-                  className="h-10 font-mono text-sm"
-                />
-                <p className="text-muted-foreground/70 mt-2 text-xs leading-relaxed">
-                  A personal address you keep after graduating &mdash; not your
-                  college one, which is the address you are protecting against
-                  losing.
-                </p>
-                <div className="mt-3 flex gap-2">
+                <div className="min-w-[240px] flex-1">
+                  <Input
+                    name="recoveryEmail"
+                    type="email"
+                    autoFocus
+                    required
+                    placeholder="you@gmail.com"
+                    className="h-10 font-mono text-sm"
+                  />
+                  <p className="text-muted-foreground/70 mt-2 text-xs leading-relaxed">
+                    A personal address you keep after graduating &mdash; not
+                    your college one, which is the address you are protecting
+                    against losing.
+                  </p>
+                </div>
+                <div className="flex gap-2">
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-9 flex-1 text-xs"
+                    className="h-10 text-xs"
                     onClick={() => setEditingRecovery(false)}
                   >
                     Cancel
@@ -378,7 +395,7 @@ export default function Account({
                   <Button
                     type="submit"
                     disabled={busy}
-                    className="h-9 flex-1 text-xs"
+                    className="h-10 text-xs"
                   >
                     {busy ? "Sending…" : "Send code"}
                   </Button>
@@ -387,32 +404,26 @@ export default function Account({
             )}
 
             {showCode && (
-              <Form method="post">
+              <Form method="post" className="flex flex-wrap items-center gap-4">
                 <input type="hidden" name="intent" value="confirm-code" />
-                <p className="text-muted-foreground text-xs leading-relaxed">
-                  Enter the 6-digit code we sent there. An unverified recovery
-                  address is not a recovery address.
-                </p>
-                <div className="mt-4">
-                  <InputOTP maxLength={6} name="code" autoFocus disabled={busy}>
-                    <InputOTPGroup className="w-full justify-between gap-1.5">
-                      {Array.from({ length: 6 }, (_, i) => (
-                        <InputOTPSlot
-                          key={i}
-                          index={i}
-                          className="h-11 flex-1 rounded-md font-mono"
-                        />
-                      ))}
-                    </InputOTPGroup>
-                  </InputOTP>
-                </div>
-                <Button
-                  type="submit"
-                  disabled={busy}
-                  className="mt-3 h-9 w-full text-xs"
-                >
+                <InputOTP maxLength={6} name="code" autoFocus disabled={busy}>
+                  <InputOTPGroup className="gap-1.5">
+                    {Array.from({ length: 6 }, (_, i) => (
+                      <InputOTPSlot
+                        key={i}
+                        index={i}
+                        className="size-11 rounded-md font-mono"
+                      />
+                    ))}
+                  </InputOTPGroup>
+                </InputOTP>
+                <Button type="submit" disabled={busy} className="h-10 text-xs">
                   {busy ? "Verifying…" : "Verify"}
                 </Button>
+                <p className="text-muted-foreground w-full text-xs leading-relaxed">
+                  Enter the code we sent there. An unverified recovery address
+                  is not a recovery address.
+                </p>
               </Form>
             )}
 
@@ -420,149 +431,153 @@ export default function Account({
               <p className="mt-3 text-xs text-emerald-500">Verified.</p>
             )}
           </Panel>
+
+          {/* Connected apps --------------------------------------------- */}
+          <Panel
+            title={`Connected apps${apps.length ? ` (${apps.length})` : ""}`}
+            className="lg:col-span-5"
+          >
+            {!apps.length ? (
+              <p className="text-muted-foreground/60 text-xs leading-relaxed">
+                No VOSS product has access to this account yet. When you sign in
+                to VERP or vboard, it appears here.
+              </p>
+            ) : (
+              <ul className="space-y-4">
+                {apps.map((app) => (
+                  <li
+                    key={app.clientId}
+                    className="border-border rounded-lg border p-4"
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-sm font-medium">{app.name}</span>
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="disconnect" />
+                        <input
+                          type="hidden"
+                          name="clientId"
+                          value={app.clientId}
+                        />
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </Form>
+                    </div>
+                    <ul className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
+                      {app.scopes.map((s) => (
+                        <li
+                          key={s}
+                          className="text-muted-foreground flex items-center gap-1.5 text-xs"
+                        >
+                          <span
+                            aria-hidden
+                            className="bg-primary size-[4px] shrink-0"
+                          />
+                          {SCOPE_COPY[s] ?? s}
+                        </li>
+                      ))}
+                    </ul>
+                    {app.connectedLabel && (
+                      <p className="text-muted-foreground/50 mt-2.5 text-xs">
+                        Connected {app.connectedLabel}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {actionData?.done === "disconnect" && (
+              <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
+                Access removed. VOSS will issue that app no new tokens.{" "}
+                <span className="text-yellow-500/80">
+                  It may keep you signed in on its own until that session
+                  expires.
+                </span>
+              </p>
+            )}
+          </Panel>
+
+          {/* Sessions ---------------------------------------------------- */}
+          <Panel
+            title={`Where you are signed in (${sessions.length})`}
+            className="lg:col-span-7"
+            action={
+              others.length > 0 && (
+                <Form method="post">
+                  <input type="hidden" name="intent" value="revoke-others" />
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
+                  >
+                    Sign out everywhere else
+                  </button>
+                </Form>
+              )
+            }
+          >
+            {/* Two columns and a capped height: eight devices should not push
+                the rest of the page off the screen. */}
+            <div className="grid max-h-[19rem] gap-2.5 overflow-y-auto pr-1 sm:grid-cols-2">
+              {sessions.map((s) => {
+                const current = s.token === currentToken;
+                return (
+                  <div
+                    key={s.token}
+                    className={[
+                      "flex items-start justify-between gap-3 rounded-lg border p-3",
+                      current
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border",
+                    ].join(" ")}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-xs">
+                        {s.browser} on {s.os}
+                      </p>
+                      {current && (
+                        <p className="text-primary mt-0.5 text-xs">
+                          this device
+                        </p>
+                      )}
+                      <p className="text-muted-foreground/50 mt-0.5 truncate font-mono text-xs">
+                        {s.ipAddress ?? "unknown IP"}
+                      </p>
+                      <p className="text-muted-foreground/40 text-xs">
+                        {s.created}
+                      </p>
+                    </div>
+
+                    {!current && (
+                      <Form method="post" className="shrink-0">
+                        <input
+                          type="hidden"
+                          name="intent"
+                          value="revoke-session"
+                        />
+                        <input type="hidden" name="token" value={s.token} />
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
+                        >
+                          Sign out
+                        </button>
+                      </Form>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
         </div>
 
-        {/* Row 2: connected apps ---------------------------------------- */}
-        <Panel
-          title={`Connected apps${apps.length ? ` (${apps.length})` : ""}`}
-          className="mt-5"
-        >
-          {!apps.length ? (
-            <p className="text-muted-foreground/60 text-xs leading-relaxed">
-              No VOSS product has access to this account yet. When you sign in to
-              VERP or vboard, it appears here.
-            </p>
-          ) : (
-            <div className="grid gap-5 sm:grid-cols-2">
-              {apps.map((app) => (
-                <div
-                  key={app.clientId}
-                  className="border-border rounded-lg border p-4"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-sm font-medium">{app.name}</span>
-                    <Form method="post">
-                      <input type="hidden" name="intent" value="disconnect" />
-                      <input
-                        type="hidden"
-                        name="clientId"
-                        value={app.clientId}
-                      />
-                      <button
-                        type="submit"
-                        disabled={busy}
-                        className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
-                    </Form>
-                  </div>
-                  <ul className="mt-3 space-y-1">
-                    {app.scopes.map((s) => (
-                      <li
-                        key={s}
-                        className="text-muted-foreground flex items-start gap-2 text-xs"
-                      >
-                        <span
-                          aria-hidden
-                          className="bg-primary mt-[6px] size-[4px] shrink-0"
-                        />
-                        {SCOPE_COPY[s] ?? s}
-                      </li>
-                    ))}
-                  </ul>
-                  {app.connectedLabel && (
-                    <p className="text-muted-foreground/50 mt-3 text-xs">
-                      Connected {app.connectedLabel}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {actionData?.done === "disconnect" && (
-            <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
-              Access removed &mdash; VOSS will issue that app no new tokens.{" "}
-              <span className="text-yellow-500/80">
-                It may keep you signed in on its own until that session expires.
-              </span>{" "}
-              To leave immediately, sign out inside the app itself.
-            </p>
-          )}
-        </Panel>
-
-        {/* Row 3: sessions ---------------------------------------------- */}
-        <Panel
-          title={`Where you are signed in (${sessions.length})`}
-          className="mt-5"
-          action={
-            others.length > 0 && (
-              <Form method="post">
-                <input type="hidden" name="intent" value="revoke-others" />
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
-                >
-                  Sign out everywhere else
-                </button>
-              </Form>
-            )
-          }
-        >
-          <div className="grid gap-3 sm:grid-cols-2">
-            {sessions.map((s) => {
-              const current = s.token === currentToken;
-              return (
-                <div
-                  key={s.token}
-                  className={[
-                    "flex items-start justify-between gap-3 rounded-lg border p-4",
-                    current ? "border-primary/40 bg-primary/5" : "border-border",
-                  ].join(" ")}
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm">
-                      {s.browser} on {s.os}
-                      {current && (
-                        <span className="text-primary ml-2 text-xs">
-                          this device
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-muted-foreground/60 mt-1 truncate font-mono text-xs">
-                      {s.ipAddress ?? "unknown IP"}
-                    </p>
-                    <p className="text-muted-foreground/50 mt-0.5 text-xs">
-                      {s.created}
-                    </p>
-                  </div>
-
-                  {!current && (
-                    <Form method="post" className="shrink-0">
-                      <input
-                        type="hidden"
-                        name="intent"
-                        value="revoke-session"
-                      />
-                      <input type="hidden" name="token" value={s.token} />
-                      <button
-                        type="submit"
-                        disabled={busy}
-                        className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
-                      >
-                        Sign out
-                      </button>
-                    </Form>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
-
-        <p className="text-muted-foreground/50 mt-10 text-xs">
+        <p className="text-muted-foreground/50 mt-9 text-xs">
           VOSS Labs &middot; Vidyalankar Institute of Technology
         </p>
       </div>
