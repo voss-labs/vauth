@@ -25,6 +25,27 @@ export function isInstitutionalEmail(email: string): boolean {
   return email.trim().toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`);
 }
 
+/**
+ * vauth must never mint a nameless identity. `name` is the whole content of
+ * OIDC's `profile` scope, and a relying party that stores it NOT NULL — VERP
+ * does — rejects the login outright with `name_is_missing`, after the OAuth
+ * dance has already succeeded. The user is left staring at a login page with no
+ * idea why.
+ *
+ * Signing in with an OTP never asks for a name, so we derive a decent one and
+ * let the account page correct it.
+ */
+export function deriveName(email: string): string {
+  const local = email.split("@")[0] ?? "";
+  return (
+    local
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ") || email
+  );
+}
+
 // Central IDENTITY roles. These say what you may do to *accounts* — they grant
 // nothing inside VERP or vboard. Product roles (student, faculty, TR, hod) live
 // in each product's own database and are never mirrored here.

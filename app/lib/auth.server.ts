@@ -11,6 +11,7 @@ import {
   ADMIN_ROLES,
   ALLOWED_EMAIL_DOMAIN,
   ROLES,
+  deriveName,
   isInstitutionalEmail,
 } from "~/lib/config";
 import { ac, roles } from "~/lib/permissions";
@@ -142,7 +143,12 @@ function buildAuth() {
                 message: `Registration is restricted to @${ALLOWED_EMAIL_DOMAIN} addresses.`,
               });
             }
-            return { data: { ...user, role: ROLES.USER } };
+            // Never mint a nameless identity: `name` is the whole content of
+            // the OIDC profile scope, and a relying party that stores it NOT
+            // NULL rejects the login with `name_is_missing` — after the OAuth
+            // dance has already succeeded.
+            const name = user.name?.trim() || deriveName(user.email);
+            return { data: { ...user, name, role: ROLES.USER } };
           },
         },
       },
