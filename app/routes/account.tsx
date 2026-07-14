@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Form, redirect, useNavigate, useNavigation } from "react-router";
+import { Form, Link, redirect, useNavigate, useNavigation } from "react-router";
+import { eq } from "drizzle-orm";
 
 import type { Route } from "./+types/account";
 import { auth, getDb } from "~/lib/auth.server";
@@ -12,11 +13,9 @@ import {
   parseUserAgent,
   relativeTime,
 } from "~/lib/account.server";
-// Everything from a .server module must stay inside loader/action. React Router
-// strips server code from those exports only — reaching for one from the
-// component pulls the whole module, and the database driver with it, into the
-// client bundle, and the build fails.
 import { audit } from "~/lib/audit.server";
+import { ADMIN_ROLES, type Role } from "~/lib/config";
+import { Panel, Row } from "~/components/card";
 import { VossMark } from "~/components/voss-mark";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -50,10 +49,13 @@ export async function loader({ request }: Route.LoaderArgs) {
     listConnectedApps(db, session.user.id),
   ]);
 
+  const role = (session.user.role ?? "user") as Role;
+
   return {
     email: session.user.email,
-    name: session.user.name,
-    role: session.user.role ?? "user",
+    name: session.user.name ?? "",
+    role,
+    isAdmin: ADMIN_ROLES.includes(role),
     recoveryEmail: session.user.recoveryEmail ?? null,
     currentToken: session.session.token,
     apps: apps.map((a) => ({
@@ -83,6 +85,20 @@ export async function action({ request }: Route.ActionArgs) {
 
   try {
     switch (intent) {
+      case "set-name": {
+        // Name is identity data — it is what OIDC's `profile` scope carries. A
+        // roll number is not: vauth holds no roster, so it could never verify one,
+        // and an unverified self-claimed roll number is worse than none. That
+        // binding belongs in the product, against the roster it actually has.
+        const name = String(form.get("name") ?? "").trim().slice(0, 80);
+        if (!name) return { error: "Name cannot be empty.", step: null, done: null };
+        await db
+          .update(schema.user)
+          .set({ name })
+          .where(eq(schema.user.id, session.user.id));
+        return { error: null, step: null, done: "name" as const };
+      }
+
       case "send-code":
         await sendRecoveryCode(
           db,
@@ -90,7 +106,7 @@ export async function action({ request }: Route.ActionArgs) {
           session.user.id,
           String(form.get("recoveryEmail") ?? "")
         );
-        return { step: "code" as const, error: null, done: null };
+        return { error: null, step: "code" as const, done: null };
 
       case "confirm-code":
         await confirmRecoveryCode(
@@ -107,18 +123,18 @@ export async function action({ request }: Route.ActionArgs) {
           targetId: session.user.id,
           request,
         });
-        return { step: "email" as const, error: null, done: "recovery" as const };
+        return { error: null, step: null, done: "recovery" as const };
 
       case "revoke-session":
         await auth.api.revokeSession({
           headers: request.headers,
           body: { token: String(form.get("token") ?? "") },
         });
-        return { step: "email" as const, error: null, done: null };
+        return { error: null, step: null, done: null };
 
       case "revoke-others":
         await auth.api.revokeOtherSessions({ headers: request.headers });
-        return { step: "email" as const, error: null, done: null };
+        return { error: null, step: null, done: null };
 
       case "disconnect": {
         const clientId = String(form.get("clientId") ?? "");
@@ -131,196 +147,299 @@ export async function action({ request }: Route.ActionArgs) {
           targetId: clientId,
           request,
         });
-        return {
-          step: "email" as const,
-          error: null,
-          done: "disconnect" as const,
-        };
+        return { error: null, step: null, done: "disconnect" as const };
       }
     }
   } catch (err) {
     return {
-      step: intent === "confirm-code" ? ("code" as const) : ("email" as const),
       error: err instanceof Error ? err.message : "Something went wrong.",
+      step: intent === "confirm-code" ? ("code" as const) : null,
       done: null,
     };
   }
 
-  return { step: "email" as const, error: null, done: null };
+  return { error: null, step: null, done: null };
 }
 
 export default function Account({
   loaderData,
   actionData,
 }: Route.ComponentProps) {
-  const { email, name, role, recoveryEmail, sessions, currentToken, apps } =
-    loaderData;
+  const {
+    email,
+    name,
+    role,
+    isAdmin,
+    recoveryEmail,
+    sessions,
+    currentToken,
+    apps,
+  } = loaderData;
+
   const navigate = useNavigate();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
 
-  const [editing, setEditing] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [editingRecovery, setEditingRecovery] = useState(false);
   const error = actionData?.error ?? null;
-  const showCode = editing && actionData?.step === "code" && !actionData?.done;
-  const otherSessions = sessions.filter((s) => s.token !== currentToken);
+  const showCode =
+    editingRecovery && actionData?.step === "code" && !actionData?.done;
+  const others = sessions.filter((s) => s.token !== currentToken);
 
   return (
-    <main className="relative flex min-h-svh justify-center overflow-hidden p-6 py-16">
+    <div className="relative min-h-svh overflow-hidden">
       <div className="voss-grid pointer-events-none absolute inset-0" />
       <div className="voss-glow pointer-events-none absolute inset-0" />
 
-      <div className="voss-rise relative w-full max-w-md">
-        <VossMark
-          status={error ? "error" : busy ? "busy" : "ok"}
-          className="mb-9"
-        />
-
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {name || "Your account"}
-        </h1>
-        <p className="text-muted-foreground mt-2 font-mono text-sm">{email}</p>
-
-        <div className="border-border mt-7 flex items-baseline justify-between border-t pt-6 text-sm">
-          <span className="text-muted-foreground">Central role</span>
-          <span className="font-mono">{role}</span>
-        </div>
-
-        {/* Recovery ------------------------------------------------------- */}
-        <section className="border-border mt-6 border-t pt-6">
-          <div className="flex items-baseline justify-between gap-4 text-sm">
-            <span className="text-muted-foreground">Recovery email</span>
-            {recoveryEmail && !editing && (
-              <span className="font-mono text-xs">{recoveryEmail}</span>
-            )}
+      <div className="voss-rise relative mx-auto w-full max-w-4xl px-6 py-14">
+        {/* Header ------------------------------------------------------- */}
+        <header className="flex flex-wrap items-start justify-between gap-6">
+          <div>
+            <VossMark
+              status={error ? "error" : busy ? "busy" : "ok"}
+              className="mb-6"
+            />
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {name || "Your account"}
+            </h1>
+            <p className="text-muted-foreground mt-1 font-mono text-sm">
+              {email}
+            </p>
           </div>
 
-          {!recoveryEmail && !editing && (
-            <>
-              <p className="border-primary/40 bg-primary/5 text-muted-foreground mt-4 border-l-2 py-2 pl-4 text-xs leading-relaxed">
-                Your college email stops working when you graduate, and there is
-                no password to fall back on. Without a personal address, you lose
-                this account on a known date.
-              </p>
-              <Button
-                variant="outline"
-                className="mt-4 h-10 w-full text-sm"
-                onClick={() => setEditing(true)}
+          <div className="flex items-center gap-3">
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className="border-border hover:bg-muted/50 rounded-md border px-3 py-2 text-xs transition-colors"
               >
-                Add a recovery email
-              </Button>
-            </>
-          )}
-
-          {recoveryEmail && !editing && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="text-muted-foreground hover:text-foreground mt-3 text-xs underline-offset-4 transition-colors hover:underline"
+                Identity console
+              </Link>
+            )}
+            <Button
+              variant="outline"
+              className="h-9 text-xs"
+              onClick={() =>
+                authClient.signOut({
+                  fetchOptions: { onSuccess: () => navigate("/sign-in") },
+                })
+              }
             >
-              Change it
-            </button>
-          )}
+              Sign out
+            </Button>
+          </div>
+        </header>
 
-          {editing && !showCode && (
-            <Form method="post" className="mt-4">
-              <input type="hidden" name="intent" value="send-code" />
-              <Input
-                name="recoveryEmail"
-                type="email"
-                autoFocus
-                required
-                placeholder="you@gmail.com"
-                className="h-11 font-mono text-sm"
-              />
-              <p className="text-muted-foreground/70 mt-2 text-xs leading-relaxed">
-                A personal address you keep after graduating &mdash; not your
-                college one, which is the address you are protecting against
-                losing.
-              </p>
-              {error && (
-                <p role="alert" className="text-destructive mt-3 text-sm">
-                  {error}
-                </p>
-              )}
-              <div className="mt-4 flex gap-3">
-                <Button
+        {error && (
+          <p role="alert" className="text-destructive mt-6 text-sm">
+            {error}
+          </p>
+        )}
+
+        {/* Row 1: identity + recovery ----------------------------------- */}
+        <div className="mt-10 grid gap-5 md:grid-cols-2">
+          <Panel
+            title="Profile"
+            action={
+              !editingName && (
+                <button
                   type="button"
-                  variant="outline"
-                  className="h-10 flex-1 text-sm"
-                  onClick={() => setEditing(false)}
+                  onClick={() => setEditingName(true)}
+                  className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 transition-colors hover:underline"
                 >
-                  Cancel
+                  {name ? "Edit" : "Add your name"}
+                </button>
+              )
+            }
+          >
+            {editingName ? (
+              <Form method="post" onSubmit={() => setEditingName(false)}>
+                <input type="hidden" name="intent" value="set-name" />
+                <Input
+                  name="name"
+                  defaultValue={name}
+                  autoFocus
+                  required
+                  maxLength={80}
+                  placeholder="Harshal More"
+                  className="h-10 text-sm"
+                />
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 flex-1 text-xs"
+                    onClick={() => setEditingName(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={busy}
+                    className="h-9 flex-1 text-xs"
+                  >
+                    Save
+                  </Button>
+                </div>
+              </Form>
+            ) : (
+              <>
+                <Row label="Name">
+                  {name || (
+                    <span className="text-muted-foreground">Not set</span>
+                  )}
+                </Row>
+                <Row label="College email">
+                  <span className="font-mono text-xs">{email}</span>
+                </Row>
+                <Row label="Central role">
+                  <span
+                    className={
+                      role === "user"
+                        ? "font-mono text-xs"
+                        : "text-primary font-mono text-xs"
+                    }
+                  >
+                    {role}
+                  </span>
+                </Row>
+              </>
+            )}
+          </Panel>
+
+          <Panel
+            title="Recovery email"
+            action={
+              recoveryEmail &&
+              !editingRecovery && (
+                <button
+                  type="button"
+                  onClick={() => setEditingRecovery(true)}
+                  className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 transition-colors hover:underline"
+                >
+                  Change
+                </button>
+              )
+            }
+          >
+            {!editingRecovery && recoveryEmail && (
+              <>
+                <p className="font-mono text-sm break-all">{recoveryEmail}</p>
+                <p className="text-muted-foreground/60 mt-3 text-xs leading-relaxed">
+                  Verified. This is how you keep the account after your college
+                  email is revoked.
+                </p>
+              </>
+            )}
+
+            {!editingRecovery && !recoveryEmail && (
+              <>
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  Your college email stops working when you graduate, and there
+                  is no password to fall back on. Without a personal address,
+                  you lose this account on a known date.
+                </p>
+                <Button
+                  variant="outline"
+                  className="mt-4 h-9 w-full text-xs"
+                  onClick={() => setEditingRecovery(true)}
+                >
+                  Add a recovery email
                 </Button>
+              </>
+            )}
+
+            {editingRecovery && !showCode && (
+              <Form method="post">
+                <input type="hidden" name="intent" value="send-code" />
+                <Input
+                  name="recoveryEmail"
+                  type="email"
+                  autoFocus
+                  required
+                  placeholder="you@gmail.com"
+                  className="h-10 font-mono text-sm"
+                />
+                <p className="text-muted-foreground/70 mt-2 text-xs leading-relaxed">
+                  A personal address you keep after graduating &mdash; not your
+                  college one, which is the address you are protecting against
+                  losing.
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 flex-1 text-xs"
+                    onClick={() => setEditingRecovery(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={busy}
+                    className="h-9 flex-1 text-xs"
+                  >
+                    {busy ? "Sending…" : "Send code"}
+                  </Button>
+                </div>
+              </Form>
+            )}
+
+            {showCode && (
+              <Form method="post">
+                <input type="hidden" name="intent" value="confirm-code" />
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  Enter the 6-digit code we sent there. An unverified recovery
+                  address is not a recovery address.
+                </p>
+                <div className="mt-4">
+                  <InputOTP maxLength={6} name="code" autoFocus disabled={busy}>
+                    <InputOTPGroup className="w-full justify-between gap-1.5">
+                      {Array.from({ length: 6 }, (_, i) => (
+                        <InputOTPSlot
+                          key={i}
+                          index={i}
+                          className="h-11 flex-1 rounded-md font-mono"
+                        />
+                      ))}
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
                 <Button
                   type="submit"
                   disabled={busy}
-                  className="h-10 flex-1 text-sm"
+                  className="mt-3 h-9 w-full text-xs"
                 >
-                  {busy ? "Sending…" : "Send code"}
+                  {busy ? "Verifying…" : "Verify"}
                 </Button>
-              </div>
-            </Form>
-          )}
+              </Form>
+            )}
 
-          {showCode && (
-            <Form method="post" className="mt-4">
-              <input type="hidden" name="intent" value="confirm-code" />
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                We sent a 6-digit code there. Enter it to prove you control the
-                mailbox &mdash; an unverified recovery address is not a recovery
-                address.
-              </p>
-              <div className="mt-4">
-                <InputOTP maxLength={6} name="code" autoFocus disabled={busy}>
-                  <InputOTPGroup className="w-full justify-between gap-2">
-                    {Array.from({ length: 6 }, (_, i) => (
-                      <InputOTPSlot
-                        key={i}
-                        index={i}
-                        className="h-12 flex-1 rounded-md font-mono"
-                      />
-                    ))}
-                  </InputOTPGroup>
-                </InputOTP>
-              </div>
-              {error && (
-                <p role="alert" className="text-destructive mt-3 text-sm">
-                  {error}
-                </p>
-              )}
-              <Button
-                type="submit"
-                disabled={busy}
-                className="mt-4 h-10 w-full text-sm"
-              >
-                {busy ? "Verifying…" : "Verify"}
-              </Button>
-            </Form>
-          )}
+            {actionData?.done === "recovery" && (
+              <p className="mt-3 text-xs text-emerald-500">Verified.</p>
+            )}
+          </Panel>
+        </div>
 
-          {actionData?.done === "recovery" && (
-            <p className="mt-3 text-xs text-emerald-500">
-              Recovery email verified.
-            </p>
-          )}
-        </section>
-
-        {/* Connected apps -------------------------------------------------- */}
-        <section className="border-border mt-6 border-t pt-6">
-          <p className="text-muted-foreground text-sm">
-            Connected apps {apps.length > 0 && `(${apps.length})`}
-          </p>
-
+        {/* Row 2: connected apps ---------------------------------------- */}
+        <Panel
+          title={`Connected apps${apps.length ? ` (${apps.length})` : ""}`}
+          className="mt-5"
+        >
           {!apps.length ? (
-            <p className="text-muted-foreground/60 mt-3 text-xs leading-relaxed">
+            <p className="text-muted-foreground/60 text-xs leading-relaxed">
               No VOSS product has access to this account yet. When you sign in to
               VERP or vboard, it appears here.
             </p>
           ) : (
-            <ul className="mt-4 space-y-5">
+            <div className="grid gap-5 sm:grid-cols-2">
               {apps.map((app) => (
-                <li key={app.clientId}>
-                  <div className="flex items-baseline justify-between gap-4">
+                <div
+                  key={app.clientId}
+                  className="border-border rounded-lg border p-4"
+                >
+                  <div className="flex items-baseline justify-between gap-3">
                     <span className="text-sm font-medium">{app.name}</span>
                     <Form method="post">
                       <input type="hidden" name="intent" value="disconnect" />
@@ -334,12 +453,11 @@ export default function Account({
                         disabled={busy}
                         className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
                       >
-                        Remove access
+                        Remove
                       </button>
                     </Form>
                   </div>
-
-                  <ul className="mt-2 space-y-1">
+                  <ul className="mt-3 space-y-1">
                     {app.scopes.map((s) => (
                       <li
                         key={s}
@@ -353,36 +471,33 @@ export default function Account({
                       </li>
                     ))}
                   </ul>
-
                   {app.connectedLabel && (
-                    <p className="text-muted-foreground/60 mt-2 text-xs">
+                    <p className="text-muted-foreground/50 mt-3 text-xs">
                       Connected {app.connectedLabel}
                     </p>
                   )}
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
 
           {actionData?.done === "disconnect" && (
             <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
-              Access removed &mdash; VOSS will issue that app no new tokens.
-              <br />
+              Access removed &mdash; VOSS will issue that app no new tokens.{" "}
               <span className="text-yellow-500/80">
                 It may keep you signed in on its own until that session expires.
               </span>{" "}
               To leave immediately, sign out inside the app itself.
             </p>
           )}
-        </section>
+        </Panel>
 
-        {/* Sessions -------------------------------------------------------- */}
-        <section className="border-border mt-6 border-t pt-6">
-          <div className="flex items-baseline justify-between gap-4">
-            <p className="text-muted-foreground text-sm">
-              Where you are signed in ({sessions.length})
-            </p>
-            {otherSessions.length > 0 && (
+        {/* Row 3: sessions ---------------------------------------------- */}
+        <Panel
+          title={`Where you are signed in (${sessions.length})`}
+          className="mt-5"
+          action={
+            others.length > 0 && (
               <Form method="post">
                 <input type="hidden" name="intent" value="revoke-others" />
                 <button
@@ -393,32 +508,39 @@ export default function Account({
                   Sign out everywhere else
                 </button>
               </Form>
-            )}
-          </div>
-
-          <ul className="mt-4 space-y-3">
+            )
+          }
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
             {sessions.map((s) => {
               const current = s.token === currentToken;
               return (
-                <li
+                <div
                   key={s.token}
-                  className="flex items-start justify-between gap-4"
+                  className={[
+                    "flex items-start justify-between gap-3 rounded-lg border p-4",
+                    current ? "border-primary/40 bg-primary/5" : "border-border",
+                  ].join(" ")}
                 >
-                  <div className="text-xs leading-relaxed">
-                    <span className="text-foreground">
+                  <div className="min-w-0">
+                    <p className="text-sm">
                       {s.browser} on {s.os}
-                    </span>
-                    {current && (
-                      <span className="text-primary ml-2">this device</span>
-                    )}
-                    <span className="text-muted-foreground/60 block font-mono">
+                      {current && (
+                        <span className="text-primary ml-2 text-xs">
+                          this device
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-muted-foreground/60 mt-1 truncate font-mono text-xs">
                       {s.ipAddress ?? "unknown IP"}
-                      {s.created && ` · ${s.created}`}
-                    </span>
+                    </p>
+                    <p className="text-muted-foreground/50 mt-0.5 text-xs">
+                      {s.created}
+                    </p>
                   </div>
 
                   {!current && (
-                    <Form method="post">
+                    <Form method="post" className="shrink-0">
                       <input
                         type="hidden"
                         name="intent"
@@ -428,34 +550,22 @@ export default function Account({
                       <button
                         type="submit"
                         disabled={busy}
-                        className="text-muted-foreground hover:text-destructive shrink-0 text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
+                        className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
                       >
                         Sign out
                       </button>
                     </Form>
                   )}
-                </li>
+                </div>
               );
             })}
-          </ul>
-        </section>
+          </div>
+        </Panel>
 
-        <Button
-          variant="outline"
-          className="mt-8 h-11 w-full"
-          onClick={() =>
-            authClient.signOut({
-              fetchOptions: { onSuccess: () => navigate("/sign-in") },
-            })
-          }
-        >
-          Sign out
-        </Button>
-
-        <p className="text-muted-foreground/70 mt-12 text-xs">
+        <p className="text-muted-foreground/50 mt-10 text-xs">
           VOSS Labs &middot; Vidyalankar Institute of Technology
         </p>
       </div>
-    </main>
+    </div>
   );
 }
