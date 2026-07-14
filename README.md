@@ -53,7 +53,11 @@ These are load-bearing. Breaking one either takes the service down or quietly wi
 
 ## Local development
 
+Node **>= 22.22.0** — React Router 8 requires it, and `engine-strict` makes an
+older version a hard failure at install rather than a warning you scroll past.
+
 ```sh
+nvm use                   # reads .nvmrc
 cp .env.example .env      # fill in, then: cp .env .dev.vars
 npm install
 npm run db:migrate
@@ -61,6 +65,27 @@ npm run dev
 ```
 
 Without `RESEND_API_KEY`, OTP codes are logged to the console instead of emailed.
+
+## Administration
+
+```sh
+npm run manage            # everything below, behind one menu
+```
+
+Privileged operations are CLI-only by design — registering an OAuth client or
+granting `super_admin` requires database credentials, and is never reachable
+over HTTP.
+
+```sh
+npm run bootstrap         # promote the first super_admin (one time)
+npm run clients           # register the products in clients.config.ts
+npm run clients:add       # wizard for a new product
+npm run clients:verify    # drive the whole OAuth flow against a live server
+```
+
+Users manage their own account — recovery email, active sessions — at
+`/account`. An admin can never set someone else's recovery address: that would
+be a silent account takeover.
 
 ## Forking for another college
 
