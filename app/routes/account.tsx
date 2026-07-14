@@ -195,7 +195,7 @@ export default function Account({
       <div className="voss-grid pointer-events-none absolute inset-0" />
       <div className="voss-glow pointer-events-none absolute inset-0" />
 
-      <div className="voss-rise relative mx-auto w-full max-w-[1500px] px-8 py-10">
+      <div className="voss-rise relative mx-auto w-full max-w-[1350px] px-10 py-10">
         {/* Header ------------------------------------------------------- */}
         <header className="flex flex-wrap items-end justify-between gap-6">
           <div>
