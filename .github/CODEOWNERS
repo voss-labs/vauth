@@ -1,0 +1,28 @@
+# vauth is an identity provider. The files below decide who can log in, who is
+# an admin, and where authorization codes are delivered — a bad change to any of
+# them is invisible in a quick review and compromises every account.
+#
+# These require a maintainer's review. This is not distrust of contributors; it
+# is the same reason Postgres has committers. Contribute freely everywhere else.
+
+# The security core
+/app/lib/auth.server.ts      @harshalmore31
+/app/lib/config.ts           @harshalmore31
+/app/lib/permissions.ts      @harshalmore31
+/app/lib/admin.server.ts     @harshalmore31
+/app/lib/recovery.server.ts  @harshalmore31
+/app/lib/csrf.server.ts      @harshalmore31
+
+# Who can log a student in — a redirect URI is the security boundary
+/clients.config.ts           @harshalmore31
+
+# Privileged CLIs and deployment config
+/scripts/                    @harshalmore31
+/wrangler.jsonc              @harshalmore31
+
+# The schema and migrations — irreversible, and they hold other people's data
+/app/db/                     @harshalmore31
+
+# Governance itself
+/.github/CODEOWNERS          @harshalmore31
+/LICENSE                     @harshalmore31

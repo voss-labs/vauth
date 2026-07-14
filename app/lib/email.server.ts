@@ -50,8 +50,17 @@ export async function sendOTP({ email, otp, type }: SendOTPArgs) {
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
-    console.log(`[otp:${type}] ${email} -> ${otp}`);
-    return;
+    // Dev-only convenience. In production a missing key must fail loudly rather
+    // than print login codes into the Worker logs (observability is on) — a
+    // contributor who deploys without RESEND_API_KEY would otherwise leak every
+    // OTP. `import.meta.env.DEV` is compiled to false in the production build.
+    if (import.meta.env.DEV) {
+      console.log(`[otp:${type}] ${email} -> ${otp}`);
+      return;
+    }
+    throw new Error(
+      "RESEND_API_KEY is not set; refusing to send OTP in the clear.",
+    );
   }
 
   let lastError: Error | undefined;

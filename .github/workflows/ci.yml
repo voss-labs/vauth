@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      # typecheck runs `wrangler types` + `react-router typegen` + tsc, so it
+      # exercises the whole type surface a contributor could break.
+      - run: npm run typecheck
+      - run: npm run build

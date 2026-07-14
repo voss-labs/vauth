@@ -14,6 +14,7 @@ import {
   relativeTime,
 } from "~/lib/account.server";
 import { audit } from "~/lib/audit.server";
+import { assertSameOrigin } from "~/lib/csrf.server";
 import { ADMIN_ROLES, type Role } from "~/lib/config";
 import { Panel, Row } from "~/components/card";
 import { VossMark } from "~/components/voss-mark";
@@ -79,6 +80,7 @@ export async function action({ request }: Route.ActionArgs) {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) throw redirect("/sign-in");
 
+  assertSameOrigin(request);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const db = getDb();

@@ -22,7 +22,11 @@ export const PUBLIC_ORIGIN =
 export const DISCOVERY_URL = `${PUBLIC_ORIGIN}/api/auth/.well-known/openid-configuration`;
 
 export function isInstitutionalEmail(email: string): boolean {
-  return email.trim().toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`);
+  // Exact-domain, not suffix. `endsWith("@vit.edu.in")` accepts
+  // `attacker@evil.com@vit.edu.in` — two @ signs, an address that does not route
+  // to the college. Split, require exactly one @, compare the domain outright.
+  const parts = email.trim().toLowerCase().split("@");
+  return parts.length === 2 && parts[1] === ALLOWED_EMAIL_DOMAIN;
 }
 
 /**
@@ -58,3 +62,24 @@ export const ROLES = {
 export type Role = (typeof ROLES)[keyof typeof ROLES];
 
 export const ADMIN_ROLES: Role[] = [ROLES.IDENTITY_ADMIN, ROLES.SUPER_ADMIN];
+
+// Higher rank = more power. An admin may only act on accounts ranked strictly
+// below their own — otherwise a support-tier identity_admin could disable the
+// super_admin and decapitate the root of trust.
+const ROLE_RANK: Record<string, number> = {
+  user: 0,
+  identity_admin: 1,
+  super_admin: 2,
+};
+
+export function roleRank(role: string | null | undefined): number {
+  return ROLE_RANK[role ?? "user"] ?? 0;
+}
+
+/** Can `actor` take a disable/revoke action against `target`? */
+export function outranks(
+  actor: string | null | undefined,
+  target: string | null | undefined,
+): boolean {
+  return roleRank(actor) > roleRank(target);
+}

@@ -79,6 +79,25 @@ function buildAuth() {
     // The jwt plugin mounts /token, which collides with /oauth2/token.
     disabledPaths: ["/token"],
 
+    // Better Auth's limiter only auto-enables when it detects NODE_ENV
+    // production, which Workers does not set — so on a passwordless IdP the
+    // primary abuse vector (spamming OTP sends, brute-forcing the 6-digit code)
+    // was undefended. Turn it on explicitly, and tighten the OTP paths.
+    //
+    // KNOWN LIMITATION: the default store is in-memory and therefore per-isolate
+    // on Workers — an attacker rotating isolates dilutes it. A durable fix needs
+    // `secondaryStorage` backed by Workers KV. Tracked in research/todo. Until
+    // then this is a real speed bump, not a wall.
+    rateLimit: {
+      enabled: true,
+      window: 60,
+      max: 30,
+      customRules: {
+        "/email-otp/send-verification-otp": { window: 60, max: 3 },
+        "/sign-in/email-otp": { window: 60, max: 5 },
+      },
+    },
+
     advanced: {
       ipAddress: {
         // Not cosmetic. Without a resolvable client IP, better-auth's rate
@@ -166,6 +185,7 @@ function buildAuth() {
 
       emailOTP({
         otpLength: 6,
+        allowedAttempts: 3,
         expiresIn: 600,
         async sendVerificationOTP({ email, otp, type }) {
           if (!isInstitutionalEmail(email)) {

@@ -1,17 +1,18 @@
-import { eq } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 import { Form, Link, useNavigation } from "react-router";
 
 import type { Route } from "./+types/super-admin.user";
 import { getDb } from "~/lib/auth.server";
 import * as schema from "~/db";
 import { audit } from "~/lib/audit.server";
+import { assertSameOrigin } from "~/lib/csrf.server";
 import {
   getUserDetail,
   requireAdmin,
   requireSuperAdmin,
 } from "~/lib/admin.server";
 import { parseUserAgent, relativeTime } from "~/lib/account.server";
-import { ROLES } from "~/lib/config";
+import { ROLES, outranks } from "~/lib/config";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 
@@ -51,8 +52,33 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   };
 }
 
+// The last super_admin is the root of trust: no one else can assign central
+// roles or manage OAuth clients. Both disabling and demoting them must be
+// refused, or the IdP can be left with no way to administer itself except the
+// CLI bootstrap against the database.
+async function isLastSuperAdmin(db: any, userId: string): Promise<boolean> {
+  const [target] = await db
+    .select({ role: schema.user.role })
+    .from(schema.user)
+    .where(eq(schema.user.id, userId));
+  if (target?.role !== "super_admin") return false;
+
+  const others = await db
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(
+      and(
+        eq(schema.user.role, "super_admin"),
+        ne(schema.user.id, userId),
+        eq(schema.user.banned, false),
+      ),
+    );
+  return others.length === 0;
+}
+
 export async function action({ request, params }: Route.ActionArgs) {
   const actor = await requireAdmin(request);
+  assertSameOrigin(request);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const db = getDb();
@@ -62,9 +88,34 @@ export async function action({ request, params }: Route.ActionArgs) {
   // super-admin. Both are recoverable only from a laptop with database access.
   const self = targetId === actor.id;
 
+  // The hierarchy check, in the ACTION not the UI. Without it a support-tier
+  // identity_admin could POST intent=disable against the super_admin and
+  // decapitate the root of trust — the target's role was never even loaded.
+  // disable / enable / revoke-sessions all act on someone else's account, so all
+  // three require the actor to strictly outrank the target.
+  if (
+    intent === "disable" ||
+    intent === "enable" ||
+    intent === "revoke-sessions"
+  ) {
+    const [target] = await db
+      .select({ role: schema.user.role })
+      .from(schema.user)
+      .where(eq(schema.user.id, targetId));
+    if (!target) return { error: "No such account." };
+    if (!self && !outranks(actor.role, target.role)) {
+      return {
+        error: "You can only act on accounts ranked below your own.",
+      };
+    }
+  }
+
   switch (intent) {
     case "disable": {
       if (self) return { error: "You cannot disable your own account." };
+      if (await isLastSuperAdmin(db, targetId)) {
+        return { error: "You cannot disable the last super-admin." };
+      }
       const reason = String(form.get("reason") ?? "").trim();
       if (!reason)
         return { error: "A reason is required. It is recorded permanently." };
@@ -130,6 +181,13 @@ export async function action({ request, params }: Route.ActionArgs) {
       const role = String(form.get("role") ?? "");
       if (!Object.values(ROLES).includes(role as never)) {
         return { error: "Unknown role." };
+      }
+      // Demoting the last super_admin leaves no one who can assign central roles.
+      if (
+        role !== ROLES.SUPER_ADMIN &&
+        (await isLastSuperAdmin(db, targetId))
+      ) {
+        return { error: "You cannot demote the last super-admin." };
       }
 
       const before = await db
