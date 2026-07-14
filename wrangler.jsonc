@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "voss-auth",
+  "main": "./workers/app.ts",
+  "compatibility_date": "2026-07-14",
+  // nodejs_compat is required: better-auth reaches for node:crypto and
+  // AsyncLocalStorage. Without it the build fails outright.
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "BETTER_AUTH_URL": "http://localhost:5173"
+  }
+}

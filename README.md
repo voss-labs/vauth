@@ -1,87 +1,71 @@
-# Welcome to React Router!
+# vauth
 
-A modern, production-ready template for building full-stack React applications using React Router.
+Central identity provider for VOSS products. A student creates one VOSS account and uses it to sign in to VERP and vboard. Each product keeps its own data, roles, permissions, and sessions.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+vauth does not authenticate vask. Its SSH-fingerprint identity and anonymity model stay independent.
 
-## Features
+## Status
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+Early. The authentication flow works end to end — OTP, session, JWKS, OIDC discovery. There is no UI yet, no audit log, and no registered client.
 
-## Getting Started
+## What this is
 
-### Installation
+An **OpenID Connect provider**, built on OAuth 2.1.
 
-Install the dependencies:
+The distinction matters. Bare OAuth answers "may this app access this resource" — authorization. OIDC answers "who is this person" — authentication. VERP needs the second: it has to learn the subject (`sub`) so it can bind a login to a student record. An access token alone would not tell it who signed in.
 
-```bash
-npm install
+Better Auth calls the plugin `@better-auth/oauth-provider`, but it speaks OIDC: the `openid` scope, ID tokens, a `/oauth2/userinfo` endpoint, a JWKS, and a discovery document.
+
+The issuer is **path-prefixed**, so discovery lives under the base path, not at the origin root:
+
+```
+https://accounts.vosslabs.org/api/auth/.well-known/openid-configuration
 ```
 
-### Development
+That is the `discoveryUrl` a relying party configures. `/.well-known/oauth-authorization-server/api/auth` (RFC 8414) is also served, from a route outside the auth catch-all.
 
-Start the development server with HMR:
+PKCE `S256` is mandatory. There is no implicit grant and no password grant.
 
-```bash
+## Stack
+
+React Router 8 (framework mode, SSR) on Cloudflare Workers, Better Auth + `@better-auth/oauth-provider`, Drizzle, Neon Postgres, Resend, shadcn/ui.
+
+```
+accounts.vosslabs.org
+  /api/auth/*        Better Auth, OAuth 2.1 + OIDC endpoints, discovery
+  /.well-known/*     RFC 8414 authorization-server metadata
+  /*                 the React application
+```
+
+## Design rules
+
+These are load-bearing. Breaking one either takes the service down or quietly widens the blast radius.
+
+**No passwords.** The verified `@vit.edu.in` mailbox is the credential. A password would be a second, weaker secret guarding the same door — and scrypt does not fit the Cloudflare Workers free-tier CPU budget. Enabling `emailAndPassword` breaks the deployment.
+
+**The `user` table never grows product columns.** No roll number, no year, no division, no department. Those describe a *student record*, and they belong to the product's registry (VERP). vauth answers "who are you", not "what is your academic state". This is also what keeps a product's migration onto vauth a config change rather than a data migration.
+
+**Central roles are identity roles only** — `user`, `identity_admin`, `super_admin`. They grant nothing inside VERP or vboard. Product roles (student, faculty, TR, hod) live in each product's own database.
+
+**Impersonation, password-setting, and hard-delete are withheld from every role, including `super_admin`.** See `app/lib/permissions.ts`.
+
+**Email is a single point of failure.** Passwordless means no mail, no login. The OTP send is awaited inside the request so a failure surfaces as a real error rather than a silent lockout — do not wire `advanced.backgroundTasks`, or Better Auth will swallow it again.
+
+## Local development
+
+```sh
+cp .env.example .env      # fill in, then: cp .env .dev.vars
+npm install
+npm run db:migrate
 npm run dev
 ```
 
-Your application will be available at `http://localhost:5173`.
+Without `RESEND_API_KEY`, OTP codes are logged to the console instead of emailed.
 
-## Building for Production
+## Forking for another college
 
-Create a production build:
+One constant: `ALLOWED_EMAIL_DOMAIN` in `app/lib/config.ts`. Roll-number formats, branch codes, and division rules are deliberately *not* here — they belong to the product's student registry, not to identity.
 
-```bash
-npm run build
-```
+## Licence
 
-## Deployment
-
-### Docker Deployment
-
-To build and run using Docker:
-
-```bash
-docker build -t my-app .
-
-# Run the container
-docker run -p 3000:3000 my-app
-```
-
-The containerized application can be deployed to any platform that supports Docker, including:
-
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
-
-### DIY Deployment
-
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
-
-Make sure to deploy the output of `npm run build`
-
-```
-├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
-```
-
-## Styling
-
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
-
----
-
-Built with ❤️ using React Router.
+MIT
