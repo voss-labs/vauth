@@ -195,7 +195,7 @@ export default function Account({
       <div className="voss-grid pointer-events-none absolute inset-0" />
       <div className="voss-glow pointer-events-none absolute inset-0" />
 
-      <div className="voss-rise relative mx-auto w-full max-w-5xl px-6 py-12">
+      <div className="voss-rise relative mx-auto w-full max-w-[1500px] px-8 py-10">
         {/* Header ------------------------------------------------------- */}
         <header className="flex flex-wrap items-end justify-between gap-6">
           <div>
@@ -221,7 +221,7 @@ export default function Account({
           <div className="flex items-center gap-2">
             {isAdmin && (
               <Link
-                to="/admin"
+                to="/super-admin"
                 className="border-border hover:bg-muted/50 rounded-md border px-3 py-2 text-xs transition-colors"
               >
                 Identity console
@@ -250,7 +250,7 @@ export default function Account({
         {/* A 12-column grid rather than one narrow stack. Everything a student
             might want lands above the fold — the point of an account page is to
             be read at a glance, not scrolled. */}
-        <div className="mt-9 grid gap-5 lg:grid-cols-12">
+        <div className="mt-8 grid gap-4 lg:grid-cols-12">
           {/* Profile ---------------------------------------------------- */}
           <Panel
             title="Profile"
@@ -316,10 +316,80 @@ export default function Account({
             )}
           </Panel>
 
+          {/* Connected apps --------------------------------------------- */}
+          <Panel
+            title={`Connected apps${apps.length ? ` (${apps.length})` : ""}`}
+            className="lg:col-span-7"
+          >
+            {!apps.length ? (
+              <p className="text-muted-foreground/60 text-xs leading-relaxed">
+                No VOSS product has access to this account yet. When you sign in
+                to VERP or vboard, it appears here.
+              </p>
+            ) : (
+              <ul className="space-y-4">
+                {apps.map((app) => (
+                  <li
+                    key={app.clientId}
+                    className="border-border rounded-lg border p-4"
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-sm font-medium">{app.name}</span>
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="disconnect" />
+                        <input
+                          type="hidden"
+                          name="clientId"
+                          value={app.clientId}
+                        />
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </Form>
+                    </div>
+                    <ul className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
+                      {app.scopes.map((s) => (
+                        <li
+                          key={s}
+                          className="text-muted-foreground flex items-center gap-1.5 text-xs"
+                        >
+                          <span
+                            aria-hidden
+                            className="bg-primary size-[4px] shrink-0"
+                          />
+                          {SCOPE_COPY[s] ?? s}
+                        </li>
+                      ))}
+                    </ul>
+                    {app.connectedLabel && (
+                      <p className="text-muted-foreground/50 mt-2.5 text-xs">
+                        Connected {app.connectedLabel}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {actionData?.done === "disconnect" && (
+              <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
+                Access removed. VOSS will issue that app no new tokens.{" "}
+                <span className="text-yellow-500/80">
+                  It may keep you signed in on its own until that session
+                  expires.
+                </span>
+              </p>
+            )}
+          </Panel>
+
           {/* Recovery --------------------------------------------------- */}
           <Panel
             title="Recovery email"
-            className="lg:col-span-7"
+            className="lg:col-span-5"
             action={
               recoveryEmail &&
               !editingRecovery && (
@@ -432,76 +502,6 @@ export default function Account({
             )}
           </Panel>
 
-          {/* Connected apps --------------------------------------------- */}
-          <Panel
-            title={`Connected apps${apps.length ? ` (${apps.length})` : ""}`}
-            className="lg:col-span-5"
-          >
-            {!apps.length ? (
-              <p className="text-muted-foreground/60 text-xs leading-relaxed">
-                No VOSS product has access to this account yet. When you sign in
-                to VERP or vboard, it appears here.
-              </p>
-            ) : (
-              <ul className="space-y-4">
-                {apps.map((app) => (
-                  <li
-                    key={app.clientId}
-                    className="border-border rounded-lg border p-4"
-                  >
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="text-sm font-medium">{app.name}</span>
-                      <Form method="post">
-                        <input type="hidden" name="intent" value="disconnect" />
-                        <input
-                          type="hidden"
-                          name="clientId"
-                          value={app.clientId}
-                        />
-                        <button
-                          type="submit"
-                          disabled={busy}
-                          className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
-                        >
-                          Remove
-                        </button>
-                      </Form>
-                    </div>
-                    <ul className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
-                      {app.scopes.map((s) => (
-                        <li
-                          key={s}
-                          className="text-muted-foreground flex items-center gap-1.5 text-xs"
-                        >
-                          <span
-                            aria-hidden
-                            className="bg-primary size-[4px] shrink-0"
-                          />
-                          {SCOPE_COPY[s] ?? s}
-                        </li>
-                      ))}
-                    </ul>
-                    {app.connectedLabel && (
-                      <p className="text-muted-foreground/50 mt-2.5 text-xs">
-                        Connected {app.connectedLabel}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {actionData?.done === "disconnect" && (
-              <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
-                Access removed. VOSS will issue that app no new tokens.{" "}
-                <span className="text-yellow-500/80">
-                  It may keep you signed in on its own until that session
-                  expires.
-                </span>
-              </p>
-            )}
-          </Panel>
-
           {/* Sessions ---------------------------------------------------- */}
           <Panel
             title={`Where you are signed in (${sessions.length})`}
@@ -523,14 +523,14 @@ export default function Account({
           >
             {/* Two columns and a capped height: eight devices should not push
                 the rest of the page off the screen. */}
-            <div className="grid max-h-[19rem] gap-2.5 overflow-y-auto pr-1 sm:grid-cols-2">
+            <div className="grid max-h-[15.5rem] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
               {sessions.map((s) => {
                 const current = s.token === currentToken;
                 return (
                   <div
                     key={s.token}
                     className={[
-                      "flex items-start justify-between gap-3 rounded-lg border p-3",
+                      "flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
                       current
                         ? "border-primary/40 bg-primary/5"
                         : "border-border",
@@ -539,17 +539,18 @@ export default function Account({
                     <div className="min-w-0">
                       <p className="truncate text-xs">
                         {s.browser} on {s.os}
+                        {current && (
+                          <span className="text-primary ml-1.5">
+                            &middot; this device
+                          </span>
+                        )}
                       </p>
-                      {current && (
-                        <p className="text-primary mt-0.5 text-xs">
-                          this device
-                        </p>
-                      )}
-                      <p className="text-muted-foreground/50 mt-0.5 truncate font-mono text-xs">
+                      <p className="text-muted-foreground/50 truncate font-mono text-xs">
                         {s.ipAddress ?? "unknown IP"}
-                      </p>
-                      <p className="text-muted-foreground/40 text-xs">
-                        {s.created}
+                        <span className="text-muted-foreground/40">
+                          {" "}
+                          &middot; {s.created}
+                        </span>
                       </p>
                     </div>
 
@@ -577,7 +578,7 @@ export default function Account({
           </Panel>
         </div>
 
-        <p className="text-muted-foreground/50 mt-9 text-xs">
+        <p className="text-muted-foreground/50 mt-8 text-xs">
           VOSS Labs &middot; Vidyalankar Institute of Technology
         </p>
       </div>

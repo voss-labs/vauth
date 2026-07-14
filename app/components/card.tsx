@@ -14,8 +14,8 @@ export function Panel({
   return (
     <section
       className={cn(
-        "border-border bg-card/60 rounded-xl border p-6 backdrop-blur-sm",
-        className
+        "border-border bg-card/60 rounded-xl border p-5 backdrop-blur-sm",
+        className,
       )}
     >
       <div className="flex items-baseline justify-between gap-4">
