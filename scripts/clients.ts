@@ -25,6 +25,7 @@ import {
   sql,
 } from "./lib/admin";
 import { accent, banner, secretBox, voss } from "./lib/brand";
+import { DISCOVERY_URL } from "../app/lib/config";
 
 const CONFIG_PATH = resolve(process.cwd(), "clients.config.ts");
 const ADD_MODE = process.argv.includes("--add");

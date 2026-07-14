@@ -5,6 +5,22 @@
 
 export const ALLOWED_EMAIL_DOMAIN = "vit.edu.in";
 
+/**
+ * Where vauth is publicly served. This is NOT the same as BETTER_AUTH_URL.
+ *
+ * BETTER_AUTH_URL is the *runtime* origin, and on a laptop it is localhost. The
+ * admin CLIs run on a laptop while writing to the *production* database, so
+ * deriving a relying party's discovery URL from BETTER_AUTH_URL handed VERP
+ * `http://localhost:5173/...` — a client registered in production, pointed at a
+ * server that only exists on one machine.
+ *
+ * Anything a relying party has to be told comes from here.
+ */
+export const PUBLIC_ORIGIN =
+  process.env.PUBLIC_ORIGIN ?? "https://accounts.vosslabs.org";
+
+export const DISCOVERY_URL = `${PUBLIC_ORIGIN}/api/auth/.well-known/openid-configuration`;
+
 export function isInstitutionalEmail(email: string): boolean {
   return email.trim().toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`);
 }

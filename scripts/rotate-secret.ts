@@ -19,6 +19,7 @@ import {
   sql,
 } from "./lib/admin";
 import { accent, banner, secretBox, voss } from "./lib/brand";
+import { DISCOVERY_URL } from "../app/lib/config";
 
 function die(message: string): never {
   cancel(message);
@@ -106,10 +107,7 @@ async function main() {
     secretBox([
       ["VOSS_CLIENT_ID", clientId],
       ["VOSS_CLIENT_SECRET", secret],
-      [
-        "VOSS_DISCOVERY_URL",
-        `${process.env.BETTER_AUTH_URL}/api/auth/.well-known/openid-configuration`,
-      ],
+      ["VOSS_DISCOVERY_URL", DISCOVERY_URL],
     ]),
     `${client.name} — paste into its .env now`,
   );
