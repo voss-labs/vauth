@@ -1,5 +1,7 @@
 import { redirect } from "react-router";
 import { desc, eq, ilike, or, sql as raw } from "drizzle-orm";
+import { createHash } from "@better-auth/utils/hash";
+import { base64Url } from "@better-auth/utils/base64";
 
 import { auth, getDb } from "~/lib/auth.server";
 import * as schema from "~/db";
@@ -108,6 +110,59 @@ export async function listClients() {
     .select()
     .from(schema.oauthClient)
     .orderBy(desc(schema.oauthClient.createdAt));
+}
+
+// SAME hash better-auth applies to a client secret at rest (SHA-256 / base64url,
+// unpadded). Rotation MUST reproduce it exactly or the token endpoint rejects the
+// client. Kept identical to scripts/lib/admin.ts — the CLI and console rotate the
+// same way.
+async function hashClientSecret(secret: string): Promise<string> {
+  const digest = await createHash("SHA-256").digest(
+    new TextEncoder().encode(secret),
+  );
+  return base64Url.encode(new Uint8Array(digest), { padding: false });
+}
+
+function generateClientSecret(): string {
+  // Web Crypto — native on Cloudflare Workers and Node alike, no nodejs_compat.
+  return base64Url.encode(crypto.getRandomValues(new Uint8Array(32)), {
+    padding: false,
+  });
+}
+
+/** Revoke (or restore) a client's ability to start a login. Never deletes it. */
+export async function setClientDisabled(clientId: string, disabled: boolean) {
+  const db = getDb();
+  const [row] = await db
+    .update(schema.oauthClient)
+    .set({ disabled, updatedAt: new Date() })
+    .where(eq(schema.oauthClient.clientId, clientId))
+    .returning({
+      clientId: schema.oauthClient.clientId,
+      name: schema.oauthClient.name,
+    });
+  return row ?? null;
+}
+
+/**
+ * Issue a fresh secret for a client and store only its hash. Returns the new
+ * plaintext ONCE so it can be shown to paste into the product — it is never
+ * recoverable afterward. The old secret stops working immediately.
+ */
+export async function rotateClientSecret(clientId: string) {
+  const db = getDb();
+  const secret = generateClientSecret();
+  const stored = await hashClientSecret(secret);
+  const [row] = await db
+    .update(schema.oauthClient)
+    .set({ clientSecret: stored, updatedAt: new Date() })
+    .where(eq(schema.oauthClient.clientId, clientId))
+    .returning({
+      clientId: schema.oauthClient.clientId,
+      name: schema.oauthClient.name,
+    });
+  if (!row) return null;
+  return { clientId: row.clientId, name: row.name, secret };
 }
 
 export async function countStats() {

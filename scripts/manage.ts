@@ -266,6 +266,82 @@ async function showClients() {
   );
 }
 
+async function pickClient(message: string) {
+  const clients = (await sql()`
+    SELECT client_id, name, disabled FROM oauth_client ORDER BY created_at
+  `) as Array<{ client_id: string; name: string | null; disabled: boolean }>;
+
+  if (!clients.length) {
+    log.warn("No OAuth clients registered. Run `npm run clients` first.");
+    return null;
+  }
+
+  const clientId = ask(
+    await select({
+      message,
+      options: clients.map((c) => ({
+        value: c.client_id,
+        label: c.name ?? c.client_id,
+        hint: c.disabled ? pc.red("disabled") : c.client_id,
+      })),
+    }),
+  ) as string;
+
+  return clients.find((c) => c.client_id === clientId)!;
+}
+
+// Revoke is a soft disable, same as accounts: a client is never deleted, so its
+// past authorizations stay attributable in the audit log and re-enabling needs
+// no re-registration. The secret is left intact for exactly that reason.
+async function toggleClientDisabled() {
+  const client = await pickClient("Revoke or re-enable which client?");
+  if (!client) return;
+  const name = client.name ?? client.client_id;
+
+  if (client.disabled) {
+    const sure = ask(
+      await confirm({
+        message: `Re-enable ${pc.bold(name)}? It can sign people in again.`,
+        initialValue: false,
+      }),
+    );
+    if (!sure) return;
+    await sql()`UPDATE oauth_client SET disabled = false, updated_at = now() WHERE client_id = ${client.client_id}`;
+    await audit({
+      action: "client.enabled",
+      actorEmail: "cli",
+      targetType: "oauth_client",
+      targetId: client.client_id,
+      details: { name: client.name },
+    });
+    log.success(`${name} re-enabled`);
+    return;
+  }
+
+  log.warn(
+    `${name} will stop being able to start a login the moment this completes.\n` +
+      "Tokens already issued keep working until they expire; the secret is kept,\n" +
+      "so re-enabling is a toggle, not a re-registration.",
+  );
+  const sure = ask(
+    await confirm({
+      message: `Revoke ${pc.bold(name)}?`,
+      initialValue: false,
+    }),
+  );
+  if (!sure) return;
+
+  await sql()`UPDATE oauth_client SET disabled = true, updated_at = now() WHERE client_id = ${client.client_id}`;
+  await audit({
+    action: "client.disabled",
+    actorEmail: "cli",
+    targetType: "oauth_client",
+    targetId: client.client_id,
+    details: { name: client.name },
+  });
+  log.success(`${name} revoked — it can no longer start a login`);
+}
+
 async function showAudit() {
   const rows = (await sql()`
     SELECT action, actor_email, target_type, target_id, details, created_at
@@ -360,6 +436,16 @@ async function main() {
             hint: "wizard → clients.config.ts",
           },
           {
+            value: "rotate",
+            label: "Re-register a client secret",
+            hint: "rotate — issues a new secret to paste into the product",
+          },
+          {
+            value: "revoke-client",
+            label: "Revoke or re-enable a client",
+            hint: "disable a product's access; never deleted",
+          },
+          {
             value: "audit",
             label: "Recent privileged actions",
             hint: "the audit log",
@@ -395,6 +481,12 @@ async function main() {
         break;
       case "add":
         run("scripts/clients.ts", ["--add"]);
+        break;
+      case "rotate":
+        run("scripts/rotate-secret.ts");
+        break;
+      case "revoke-client":
+        await toggleClientDisabled();
         break;
       case "audit":
         await showAudit();
