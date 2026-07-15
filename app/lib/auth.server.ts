@@ -16,6 +16,7 @@ import {
 } from "~/lib/config";
 import { ac, roles } from "~/lib/permissions";
 import { sendOTP } from "~/lib/email.server";
+import { kvRateLimitStorage } from "~/lib/rate-limit-kv";
 
 // Everything below is built LAZILY, on first access, and this is not optional.
 //
@@ -84,14 +85,15 @@ function buildAuth() {
     // primary abuse vector (spamming OTP sends, brute-forcing the 6-digit code)
     // was undefended. Turn it on explicitly, and tighten the OTP paths.
     //
-    // KNOWN LIMITATION: the default store is in-memory and therefore per-isolate
-    // on Workers — an attacker rotating isolates dilutes it. A durable fix needs
-    // `secondaryStorage` backed by Workers KV. Tracked in research/todo. Until
-    // then this is a real speed bump, not a wall.
+    // customStorage backs it with Workers KV so the counts survive across
+    // isolates — the in-memory default was per-isolate and dilutable by rotating
+    // isolates. NOT global secondaryStorage, which would also relocate sessions
+    // into eventually-consistent KV; customStorage is scoped to rate limiting.
     rateLimit: {
       enabled: true,
       window: 60,
       max: 30,
+      customStorage: kvRateLimitStorage(),
       customRules: {
         "/email-otp/send-verification-otp": { window: 60, max: 3 },
         "/sign-in/email-otp": { window: 60, max: 5 },
