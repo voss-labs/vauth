@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { authClient } from "~/lib/auth-client";
-import { ALLOWED_EMAIL_DOMAIN } from "~/lib/config";
+import {
+  ALLOWED_EMAIL_DOMAINS_LABEL,
+  isInstitutionalEmail,
+} from "~/lib/config";
 import { VossMark } from "~/components/voss-mark";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -69,8 +72,8 @@ export default function SignIn() {
     e.preventDefault();
     const address = email.trim().toLowerCase();
 
-    if (!address.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
-      setError(`Use your college email — it must end in @${ALLOWED_EMAIL_DOMAIN}.`);
+    if (!isInstitutionalEmail(address)) {
+      setError(`Use a ${ALLOWED_EMAIL_DOMAINS_LABEL} address.`);
       emailRef.current?.focus();
       return;
     }
@@ -130,7 +133,7 @@ export default function SignIn() {
                 autoComplete="email"
                 autoFocus
                 required
-                placeholder={`you@${ALLOWED_EMAIL_DOMAIN}`}
+                placeholder="you@vit.edu.in"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
