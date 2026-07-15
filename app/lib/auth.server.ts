@@ -9,7 +9,7 @@ import { neon } from "@neondatabase/serverless";
 import * as schema from "~/db";
 import {
   ADMIN_ROLES,
-  ALLOWED_EMAIL_DOMAIN,
+  ALLOWED_EMAIL_DOMAINS_LABEL,
   ROLES,
   deriveName,
   isInstitutionalEmail,
@@ -146,7 +146,7 @@ function buildAuth() {
         const email = (ctx.body as { email?: string } | undefined)?.email;
         if (email && !isInstitutionalEmail(email)) {
           throw new APIError("BAD_REQUEST", {
-            message: `Only @${ALLOWED_EMAIL_DOMAIN} addresses can sign in.`,
+            message: `Only ${ALLOWED_EMAIL_DOMAINS_LABEL} addresses can sign in.`,
           });
         }
       }),
@@ -161,7 +161,7 @@ function buildAuth() {
             // institutional email — that is the entire registration gate.
             if (!isInstitutionalEmail(user.email)) {
               throw new APIError("BAD_REQUEST", {
-                message: `Registration is restricted to @${ALLOWED_EMAIL_DOMAIN} addresses.`,
+                message: `Registration is restricted to ${ALLOWED_EMAIL_DOMAINS_LABEL} addresses.`,
               });
             }
             // Never mint a nameless identity: `name` is the whole content of
@@ -192,7 +192,7 @@ function buildAuth() {
         async sendVerificationOTP({ email, otp, type }) {
           if (!isInstitutionalEmail(email)) {
             throw new APIError("BAD_REQUEST", {
-              message: `Only @${ALLOWED_EMAIL_DOMAIN} addresses can sign in.`,
+              message: `Only ${ALLOWED_EMAIL_DOMAINS_LABEL} addresses can sign in.`,
             });
           }
           await sendOTP({ email, otp, type });

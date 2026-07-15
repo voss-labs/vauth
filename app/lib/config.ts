@@ -3,7 +3,14 @@
 // codes and division rules are NOT here, because they belong to the product's
 // student registry (VERP), not to the identity provider.
 
-export const ALLOWED_EMAIL_DOMAIN = "vit.edu.in";
+// Who may sign in: VIT students/faculty, plus the VOSS Labs team who run the
+// products. A fork for another college edits this list and nothing else.
+export const ALLOWED_EMAIL_DOMAINS = ["vit.edu.in", "vosslabs.org"] as const;
+
+// For error messages and placeholders, e.g. "@vit.edu.in or @vosslabs.org".
+export const ALLOWED_EMAIL_DOMAINS_LABEL = ALLOWED_EMAIL_DOMAINS.map(
+  (d) => `@${d}`
+).join(" or ");
 
 /**
  * Where vauth is publicly served. This is NOT the same as BETTER_AUTH_URL.
@@ -26,7 +33,10 @@ export function isInstitutionalEmail(email: string): boolean {
   // `attacker@evil.com@vit.edu.in` — two @ signs, an address that does not route
   // to the college. Split, require exactly one @, compare the domain outright.
   const parts = email.trim().toLowerCase().split("@");
-  return parts.length === 2 && parts[1] === ALLOWED_EMAIL_DOMAIN;
+  return (
+    parts.length === 2 &&
+    (ALLOWED_EMAIL_DOMAINS as readonly string[]).includes(parts[1])
+  );
 }
 
 /**
