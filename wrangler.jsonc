@@ -16,6 +16,13 @@
     // build assets are excluded so they stay free and never invoke the Worker.
     "run_worker_first": ["/*", "!/assets/*"]
   },
+  // Durable rate-limit store. Better Auth's default limiter is in-memory and
+  // therefore per-isolate on Workers — an attacker rotating isolates dilutes it.
+  // Backing it with KV makes the OTP-spam limits survive across isolates. See the
+  // rateLimit.customStorage wiring in app/lib/auth.server.ts.
+  "kv_namespaces": [
+    { "binding": "RATE_LIMIT_KV", "id": "f1dae3c884a445fd9980f702da22abe7" }
+  ],
   "vars": {
     // The OIDC issuer is derived from this, so it MUST equal the origin the
     // worker is actually served from. Get it wrong and discovery advertises
