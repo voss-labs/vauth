@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Form, Link, redirect, useNavigate, useNavigation } from "react-router";
 import { and, eq } from "drizzle-orm";
 
+import { GithubIcon } from "~/components/github-icon";
+
 import type { Route } from "./+types/account";
 import { auth, getDb } from "~/lib/auth.server";
 import * as schema from "~/db";
@@ -37,6 +39,36 @@ const SCOPE_COPY: Record<string, string> = {
   offline_access: "Stay signed in while you are away",
 };
 
+// Server-only. Called from the /account loader when a GitHub account row
+// exists. The stored access token is a personal-scope token (not a GitHub App
+// installation token) so it does not expire. Any failure resolves to null;
+// the UI degrades to showing the numeric github id and no email, which is
+// still informative and does not block anything.
+async function fetchGithubPrimaryEmail(
+  accessToken: string | null,
+): Promise<string | null> {
+  if (!accessToken) return null;
+  try {
+    const resp = await fetch("https://api.github.com/user/emails", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "vauth",
+      },
+    });
+    if (!resp.ok) return null;
+    const emails = (await resp.json()) as Array<{
+      email: string;
+      primary: boolean;
+      verified: boolean;
+    }>;
+    const primary = emails.find((e) => e.primary && e.verified);
+    return primary?.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // auth.api.getSession, not a fetch to /api/auth/get-session. The direct call is
 // built once at init; the HTTP endpoint rebuilds better-auth's entire router on
 // every request (#10188). That gap is why this app is SSR rather than a SPA.
@@ -50,11 +82,14 @@ export async function loader({ request }: Route.LoaderArgs) {
     listConnectedApps(db, session.user.id),
     // Single row per user, per provider. If it exists, GitHub is linked and the
     // user retains access after @vit.edu.in expires. accountId is the stable
-    // GitHub user id, safe to display and safe as the audit-log correlate.
+    // GitHub user id, safe to display and safe as the audit-log correlate. The
+    // access token is only used server-side, in this same request, to look up
+    // the primary email so the user can see WHICH GitHub account they linked.
     db
       .select({
         id: schema.account.id,
         accountId: schema.account.accountId,
+        accessToken: schema.account.accessToken,
         createdAt: schema.account.createdAt,
       })
       .from(schema.account)
@@ -71,6 +106,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const github = githubRow[0]
     ? {
         providerAccountId: githubRow[0].accountId,
+        primaryEmail: await fetchGithubPrimaryEmail(githubRow[0].accessToken),
         linkedLabel: relativeTime(String(githubRow[0].createdAt)),
       }
     : null;
@@ -623,15 +659,26 @@ export default function Account({
             {github ? (
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="font-mono text-sm">
-                    GitHub
-                    <span className="text-muted-foreground/60 ml-2 text-xs">
+                  <p className="flex items-center gap-2 text-sm">
+                    <GithubIcon className="size-4 shrink-0" aria-hidden />
+                    <span className="font-mono">GitHub</span>
+                    <span className="text-muted-foreground/60 font-mono text-xs">
                       id {github.providerAccountId}
                     </span>
                   </p>
+                  {github.primaryEmail && (
+                    <p className="text-muted-foreground/70 mt-1.5 font-mono text-xs">
+                      {github.primaryEmail}
+                    </p>
+                  )}
                   <p className="text-muted-foreground/60 mt-1.5 text-xs leading-relaxed">
-                    Linked {github.linkedLabel}. Sign in with GitHub after your
-                    college email stops working. Same account, same permissions.
+                    Linked {github.linkedLabel}. College email
+                    <span className="text-foreground/80 mx-1 font-mono">
+                      {email}
+                    </span>
+                    stays the primary identity; the GitHub address above is a
+                    separate mailbox and neither one displaces the other. Sign
+                    in with GitHub after your college email stops working.
                   </p>
                 </div>
                 <Form method="post" className="shrink-0">
@@ -650,12 +697,13 @@ export default function Account({
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <p className="text-muted-foreground min-w-0 text-xs leading-relaxed">
                   Link GitHub while your college email still works. When VIT
-                  revokes it, you sign in with GitHub instead. No password
-                  either way, and this stays a VOSS account, not a GitHub one.
+                  revokes it, you sign in with GitHub instead. Your college
+                  address stays your primary identity; the GitHub email is
+                  stored separately.
                 </p>
                 <Button
                   variant="outline"
-                  className="h-9 shrink-0 text-xs"
+                  className="h-9 shrink-0 gap-2 text-xs"
                   disabled={busy}
                   onClick={() =>
                     authClient.linkSocial({
@@ -664,6 +712,7 @@ export default function Account({
                     })
                   }
                 >
+                  <GithubIcon className="size-4" aria-hidden />
                   Link GitHub
                 </Button>
               </div>
