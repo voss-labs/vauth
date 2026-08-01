@@ -157,6 +157,23 @@ function buildAuth() {
       },
     },
 
+    account: {
+      accountLinking: {
+        // Manual link via /account is the only supported linking path. A
+        // student's @vit.edu.in mailbox will never match their personal GitHub
+        // email, so the default same-email requirement would block every real
+        // user. `disableImplicitLinking` closes the other side of the same door:
+        // Better Auth otherwise auto-links on sign-in when a matching email is
+        // found via a trusted provider, and we do not want a stray email match
+        // to attach the wrong GitHub identity to a VIT account. The takeover
+        // risk called out on `allowDifferentEmails` does not apply here because
+        // linking is behind an authenticated session and github signup is
+        // already gated off by `disableSignUp: true` above.
+        allowDifferentEmails: true,
+        disableImplicitLinking: true,
+      },
+    },
+
     // No backgroundTasks handler, deliberately. better-auth only awaits deferred
     // work when this is absent (see runInBackgroundOrAwait in create-context.mjs).
     // Awaiting keeps the OTP send inside the request, which is the only way to know
