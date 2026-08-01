@@ -6,6 +6,7 @@ import {
   ALLOWED_EMAIL_DOMAINS_LABEL,
   isInstitutionalEmail,
 } from "~/lib/config";
+import { GithubIcon } from "~/components/github-icon";
 import { VossMark } from "~/components/voss-mark";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -164,22 +165,24 @@ export default function SignIn() {
             <div className="border-border mt-8 border-t pt-6">
               <p className="text-muted-foreground/80 text-xs leading-relaxed">
                 Graduated and lost @vit.edu.in access? If you linked GitHub
-                while your college email still worked, you can{" "}
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    authClient.signIn.social({
-                      provider: "github",
-                      callbackURL,
-                    })
-                  }
-                  className="text-foreground underline-offset-4 hover:underline disabled:opacity-50"
-                >
-                  sign in with GitHub
-                </button>
-                .
+                while your college email still worked, you can sign in with it
+                instead.
               </p>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  authClient.signIn.social({
+                    provider: "github",
+                    callbackURL,
+                  })
+                }
+                className="mt-4 h-10 w-full gap-2 text-xs font-medium"
+              >
+                <GithubIcon className="size-4" aria-hidden />
+                Sign in with GitHub
+              </Button>
             </div>
           </form>
         ) : (
