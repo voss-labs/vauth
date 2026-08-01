@@ -51,6 +51,8 @@ These are load-bearing. Breaking one either takes the service down or quietly wi
 
 **Email is a single point of failure.** Passwordless means no mail, no login. The OTP send is awaited inside the request so a failure surfaces as a real error rather than a silent lockout — do not wire `advanced.backgroundTasks`, or Better Auth will swallow it again.
 
+**@vit.edu.in is the affiliation gate, not the credential.** A student signs in with the college mailbox to prove current affiliation; a linked GitHub account on `/account` then pins a durable identity that survives the day VIT revokes the mailbox. `socialProviders.github.disableSignUp: true` enforces the direction of travel: GitHub can sign in an existing user but cannot create a new one, so the college-email gate is never bypassed. GitHub OAuth is federated identity, not a stored secret, so the "no passwords" rule above still holds; scrypt still stays out of the request path. Recovery email remains as the orthogonal escape hatch when a linked GitHub is itself lost.
+
 ## Local development
 
 Node **>= 22.22.0** — React Router 8 requires it, and `engine-strict` makes an
