@@ -23,8 +23,15 @@ export const ALLOWED_EMAIL_DOMAINS_LABEL = ALLOWED_EMAIL_DOMAINS.map(
  *
  * Anything a relying party has to be told comes from here.
  */
+// The `typeof process` guard is load-bearing: `config.ts` is imported by
+// client code (`sign-in.tsx`, `account.tsx`) via `isInstitutionalEmail` and
+// friends, so this evaluates in the browser too. Without the guard, the whole
+// client chunk throws `ReferenceError: process is not defined` on module load
+// and no page ever hydrates. The browser fallback is safe: no client code
+// reads PUBLIC_ORIGIN (it exists for the OIDC discovery URL and CLI admins).
 export const PUBLIC_ORIGIN =
-  process.env.PUBLIC_ORIGIN ?? "https://accounts.vosslabs.org";
+  (typeof process !== "undefined" ? process.env.PUBLIC_ORIGIN : undefined) ??
+  "https://accounts.vosslabs.org";
 
 export const DISCOVERY_URL = `${PUBLIC_ORIGIN}/api/auth/.well-known/openid-configuration`;
 
