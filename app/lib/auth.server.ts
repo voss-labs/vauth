@@ -116,6 +116,31 @@ function buildAuth() {
       },
     },
 
+    // GitHub is a linkable identity, never a signup path. First sign-in is
+    // always the @vit.edu.in OTP flow above, which proves current affiliation;
+    // linking on /account then pins a durable identity that survives the day
+    // VIT revokes the mailbox. `disableSignUp: true` is the affiliation gate:
+    // a GitHub sign-in without a pre-existing user is rejected outright, so no
+    // one can create a VOSS account without ever verifying a college address.
+    //
+    // GitHub OAuth is federated identity, not a stored secret, so CONTRIBUTING
+    // rule 1 (no passwords) still holds; scrypt still stays out of the request
+    // path. And the provider is registered only when both env vars are present,
+    // so a dev environment without credentials simply does not advertise it,
+    // matching how missing RESEND_API_KEY falls back to console-logged OTPs.
+    ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
+      ? {
+          socialProviders: {
+            github: {
+              clientId: process.env.GITHUB_CLIENT_ID,
+              clientSecret: process.env.GITHUB_CLIENT_SECRET,
+              scope: ["read:user", "user:email"],
+              disableSignUp: true,
+            },
+          },
+        }
+      : {}),
+
     user: {
       additionalFields: {
         // Survives graduation. VIT revokes @vit.edu.in on a known date, and with
