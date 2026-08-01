@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Form, Link, redirect, useNavigate, useNavigation } from "react-router";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type { Route } from "./+types/account";
 import { auth, getDb } from "~/lib/auth.server";
@@ -15,7 +15,7 @@ import {
 } from "~/lib/account.server";
 import { audit } from "~/lib/audit.server";
 import { assertSameOrigin } from "~/lib/csrf.server";
-import { ADMIN_ROLES, type Role } from "~/lib/config";
+import { ADMIN_ROLES, GITHUB_PROVIDER_ID, type Role } from "~/lib/config";
 import { Panel, Row } from "~/components/card";
 import { VossMark } from "~/components/voss-mark";
 import { Button } from "~/components/ui/button";
@@ -45,12 +45,31 @@ export async function loader({ request }: Route.LoaderArgs) {
   if (!session) throw redirect("/sign-in");
 
   const db = getDb();
-  const [sessions, apps] = await Promise.all([
+  const [sessions, apps, githubRow] = await Promise.all([
     auth.api.listSessions({ headers: request.headers }),
     listConnectedApps(db, session.user.id),
+    // Single row per user, per provider. If it exists, GitHub is linked and the
+    // user retains access after @vit.edu.in expires. accountId is the stable
+    // GitHub user id, safe to display and safe as the audit-log correlate.
+    db
+      .select({ id: schema.account.id, accountId: schema.account.accountId, createdAt: schema.account.createdAt })
+      .from(schema.account)
+      .where(
+        and(
+          eq(schema.account.userId, session.user.id),
+          eq(schema.account.providerId, GITHUB_PROVIDER_ID),
+        ),
+      )
+      .limit(1),
   ]);
 
   const role = (session.user.role ?? "user") as Role;
+  const github = githubRow[0]
+    ? {
+        providerAccountId: githubRow[0].accountId,
+        linkedLabel: relativeTime(String(githubRow[0].createdAt)),
+      }
+    : null;
 
   return {
     email: session.user.email,
@@ -59,6 +78,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     isAdmin: ADMIN_ROLES.includes(role),
     recoveryEmail: session.user.recoveryEmail ?? null,
     currentToken: session.session.token,
+    github,
     apps: apps.map((a) => ({
       ...a,
       connectedLabel: relativeTime(a.connectedAt),
