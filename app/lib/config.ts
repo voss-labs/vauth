@@ -93,3 +93,7 @@ export function outranks(
 ): boolean {
   return roleRank(actor) > roleRank(target);
 }
+
+// Better Auth's provider id for GitHub. Kept in one place so the auth
+// configuration, the /account UI, and audit event names cannot drift.
+export const GITHUB_PROVIDER_ID = "github" as const;
