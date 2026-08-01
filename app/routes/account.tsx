@@ -52,7 +52,11 @@ export async function loader({ request }: Route.LoaderArgs) {
     // user retains access after @vit.edu.in expires. accountId is the stable
     // GitHub user id, safe to display and safe as the audit-log correlate.
     db
-      .select({ id: schema.account.id, accountId: schema.account.accountId, createdAt: schema.account.createdAt })
+      .select({
+        id: schema.account.id,
+        accountId: schema.account.accountId,
+        createdAt: schema.account.createdAt,
+      })
       .from(schema.account)
       .where(
         and(
@@ -631,11 +635,7 @@ export default function Account({
                   </p>
                 </div>
                 <Form method="post" className="shrink-0">
-                  <input
-                    type="hidden"
-                    name="intent"
-                    value="unlink-github"
-                  />
+                  <input type="hidden" name="intent" value="unlink-github" />
                   <Button
                     type="submit"
                     variant="outline"
