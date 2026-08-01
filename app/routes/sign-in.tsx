@@ -154,6 +154,33 @@ export default function SignIn() {
             >
               {busy ? "Sending code…" : "Continue"}
             </Button>
+
+            {/* The alumni entry. Hidden below the primary OTP flow because a
+                current student should default to the college email, and only
+                users who have linked GitHub while their email still worked can
+                actually succeed here (socialProviders.github.disableSignUp is
+                on). Placed after the button so it never competes for first
+                click. */}
+            <div className="border-border mt-8 border-t pt-6">
+              <p className="text-muted-foreground/80 text-xs leading-relaxed">
+                Graduated and lost @vit.edu.in access? If you linked GitHub
+                while your college email still worked, you can{" "}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    authClient.signIn.social({
+                      provider: "github",
+                      callbackURL,
+                    })
+                  }
+                  className="text-foreground underline-offset-4 hover:underline disabled:opacity-50"
+                >
+                  sign in with GitHub
+                </button>
+                .
+              </p>
+            </div>
           </form>
         ) : (
           <div>
