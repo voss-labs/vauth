@@ -174,6 +174,17 @@ export async function action({ request }: Route.ActionArgs) {
         });
         return { error: null, step: null, done: "disconnect" as const };
       }
+
+      case "unlink-github": {
+        // Delegates to better-auth's /unlink-account so its account.delete hook
+        // fires normally, which is what emits the user.github_unlinked audit
+        // entry in auth.server.ts. Doing the delete here directly would skip it.
+        await auth.api.unlinkAccount({
+          headers: request.headers,
+          body: { providerId: GITHUB_PROVIDER_ID },
+        });
+        return { error: null, step: null, done: "github-unlinked" as const };
+      }
     }
   } catch (err) {
     return {
@@ -656,6 +667,13 @@ export default function Account({
                   Link GitHub
                 </Button>
               </div>
+            )}
+
+            {actionData?.done === "github-unlinked" && (
+              <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
+                GitHub unlinked. This account now depends on the college email
+                and any recovery address you set.
+              </p>
             )}
           </Panel>
         </div>
