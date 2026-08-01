@@ -10,11 +10,13 @@ import * as schema from "~/db";
 import {
   ADMIN_ROLES,
   ALLOWED_EMAIL_DOMAINS_LABEL,
+  GITHUB_PROVIDER_ID,
   ROLES,
   deriveName,
   isInstitutionalEmail,
 } from "~/lib/config";
 import { ac, roles } from "~/lib/permissions";
+import { audit } from "~/lib/audit.server";
 import { sendOTP } from "~/lib/email.server";
 import { kvRateLimitStorage } from "~/lib/rate-limit-kv";
 
@@ -195,6 +197,35 @@ function buildAuth() {
             // dance has already succeeded.
             const name = user.name?.trim() || deriveName(user.email);
             return { data: { ...user, name, role: ROLES.USER } };
+          },
+        },
+      },
+      account: {
+        // Fires for any provider (credential, oauth callbacks, /link-social).
+        // Filter to github so the audit log stays a signal of federated-identity
+        // changes, not noise from the primary OTP flow.
+        create: {
+          after: async (account) => {
+            if (account.providerId !== GITHUB_PROVIDER_ID) return;
+            await audit(getDb(), {
+              action: "user.github_linked",
+              actorId: account.userId,
+              targetType: "account",
+              targetId: account.id,
+              details: { providerAccountId: account.accountId },
+            });
+          },
+        },
+        delete: {
+          after: async (account) => {
+            if (account.providerId !== GITHUB_PROVIDER_ID) return;
+            await audit(getDb(), {
+              action: "user.github_unlinked",
+              actorId: account.userId,
+              targetType: "account",
+              targetId: account.id,
+              details: { providerAccountId: account.accountId },
+            });
           },
         },
       },
