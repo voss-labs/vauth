@@ -199,6 +199,7 @@ export default function Account({
     sessions,
     currentToken,
     apps,
+    github,
   } = loaderData;
 
   const navigate = useNavigate();
@@ -597,6 +598,65 @@ export default function Account({
                 );
               })}
             </div>
+          </Panel>
+
+          {/* Linked accounts -------------------------------------------- */}
+          {/* Same theme as the recovery panel: keep this account alive after
+              the college revokes the email. GitHub is the durable identity, the
+              recovery mailbox is the second escape hatch. Two orthogonal paths. */}
+          <Panel title="Linked accounts" className="lg:col-span-12">
+            {github ? (
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-mono text-sm">
+                    GitHub
+                    <span className="text-muted-foreground/60 ml-2 text-xs">
+                      id {github.providerAccountId}
+                    </span>
+                  </p>
+                  <p className="text-muted-foreground/60 mt-1.5 text-xs leading-relaxed">
+                    Linked {github.linkedLabel}. Sign in with GitHub after your
+                    college email stops working. Same account, same permissions.
+                  </p>
+                </div>
+                <Form method="post" className="shrink-0">
+                  <input
+                    type="hidden"
+                    name="intent"
+                    value="unlink-github"
+                  />
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    disabled={busy}
+                    className="h-9 text-xs"
+                  >
+                    Unlink GitHub
+                  </Button>
+                </Form>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <p className="text-muted-foreground min-w-0 text-xs leading-relaxed">
+                  Link GitHub while your college email still works. When VIT
+                  revokes it, you sign in with GitHub instead. No password
+                  either way, and this stays a VOSS account, not a GitHub one.
+                </p>
+                <Button
+                  variant="outline"
+                  className="h-9 shrink-0 text-xs"
+                  disabled={busy}
+                  onClick={() =>
+                    authClient.linkSocial({
+                      provider: "github",
+                      callbackURL: "/account",
+                    })
+                  }
+                >
+                  Link GitHub
+                </Button>
+              </div>
+            )}
           </Panel>
         </div>
 
