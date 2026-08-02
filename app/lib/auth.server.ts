@@ -171,6 +171,16 @@ function buildAuth() {
         // already gated off by `disableSignUp: true` above.
         allowDifferentEmails: true,
         disableImplicitLinking: true,
+        // Better Auth refuses to remove the last account by default, which
+        // would strand a user who linked GitHub and later wants to unlink it
+        // (email-OTP does not create an `account` row of its own, so a lone
+        // GitHub row IS the last one). Safe to allow here: the @vit.edu.in
+        // OTP path in `emailOTP` above is not gated on any account row, so a
+        // user with zero linked accounts can still sign in as long as the
+        // college mailbox works. Post-graduation, unlinking is the wrong
+        // move anyway; the UI does not surface unlink to users with no other
+        // way in.
+        allowUnlinkingAll: true,
       },
     },
 
