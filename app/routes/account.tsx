@@ -463,7 +463,7 @@ export default function Account({
           {/* Recovery --------------------------------------------------- */}
           <Panel
             title="Recovery email"
-            className="lg:col-span-5"
+            className="lg:col-span-6"
             action={
               recoveryEmail &&
               !editingRecovery && (
@@ -576,10 +576,96 @@ export default function Account({
             )}
           </Panel>
 
+          {/* Linked accounts -------------------------------------------- */}
+          {/* Same theme as the recovery panel: keep this account alive after
+              the college revokes the email. GitHub is the durable identity, the
+              recovery mailbox is the second escape hatch. Two orthogonal paths. */}
+          <Panel
+            title="Linked accounts"
+            className="lg:col-span-6"
+            action={
+              github && (
+                <Form method="post">
+                  <input
+                    type="hidden"
+                    name="intent"
+                    value="unlink-github"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
+                  >
+                    Unlink
+                  </button>
+                </Form>
+              )
+            }
+          >
+            {github ? (
+              <div className="min-w-0">
+                <div className="mb-1 flex items-center gap-2.5">
+                  <GithubIcon className="size-4 shrink-0" aria-hidden />
+                  <span className="text-sm font-medium">GitHub</span>
+                  <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-500">
+                    Linked
+                  </span>
+                </div>
+                {github.primaryEmail && (
+                  <Row label="Primary email">
+                    <span className="font-mono text-xs">
+                      {github.primaryEmail}
+                    </span>
+                  </Row>
+                )}
+                <Row label="Account id">
+                  <span className="font-mono text-xs">
+                    {github.providerAccountId}
+                  </span>
+                </Row>
+                <Row label="Linked">{github.linkedLabel}</Row>
+                <p className="text-muted-foreground/60 mt-3 text-xs leading-relaxed">
+                  Your college address stays the primary identity. The GitHub
+                  email above is a separate mailbox; neither one displaces the
+                  other.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <p className="text-muted-foreground min-w-0 text-xs leading-relaxed">
+                  Link GitHub while your college email still works. When VIT
+                  revokes it, you sign in with GitHub instead. College address
+                  stays primary; the GitHub email is stored separately.
+                </p>
+                <Button
+                  variant="outline"
+                  className="h-9 shrink-0 gap-2 text-xs"
+                  disabled={busy}
+                  onClick={() =>
+                    authClient.linkSocial({
+                      provider: "github",
+                      callbackURL: "/account",
+                    })
+                  }
+                >
+                  <GithubIcon className="size-3.5" aria-hidden />
+                  Link GitHub
+                </Button>
+              </div>
+            )}
+
+            {actionData?.done === "github-unlinked" && (
+              <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
+                GitHub unlinked. This account now depends on the college email
+                and any recovery address you set.
+              </p>
+            )}
+          </Panel>
+
           {/* Sessions ---------------------------------------------------- */}
           <Panel
             title={`Where you are signed in (${sessions.length})`}
-            className="lg:col-span-7"
+            className="lg:col-span-12"
             action={
               others.length > 0 && (
                 <Form method="post">
@@ -597,7 +683,7 @@ export default function Account({
           >
             {/* Two columns and a capped height: eight devices should not push
                 the rest of the page off the screen. */}
-            <div className="grid max-h-[15.5rem] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+            <div className="grid max-h-[15.5rem] gap-2 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
               {sessions.map((s) => {
                 const current = s.token === currentToken;
                 return (
@@ -649,96 +735,6 @@ export default function Account({
                 );
               })}
             </div>
-          </Panel>
-
-          {/* Linked accounts -------------------------------------------- */}
-          {/* Same theme as the recovery panel: keep this account alive after
-              the college revokes the email. GitHub is the durable identity, the
-              recovery mailbox is the second escape hatch. Two orthogonal paths. */}
-          <Panel
-            title="Linked accounts"
-            className="lg:col-span-12"
-            action={
-              github && (
-                <Form method="post">
-                  <input
-                    type="hidden"
-                    name="intent"
-                    value="unlink-github"
-                  />
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="text-muted-foreground hover:text-destructive text-xs underline-offset-4 transition-colors hover:underline disabled:opacity-50"
-                  >
-                    Unlink
-                  </button>
-                </Form>
-              )
-            }
-          >
-            {github ? (
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="min-w-0">
-                  <div className="mb-1 flex items-center gap-2.5">
-                    <GithubIcon className="size-4 shrink-0" aria-hidden />
-                    <span className="text-sm font-medium">GitHub</span>
-                    <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-500">
-                      Linked
-                    </span>
-                  </div>
-                  {github.primaryEmail && (
-                    <Row label="Primary email">
-                      <span className="font-mono text-xs">
-                        {github.primaryEmail}
-                      </span>
-                    </Row>
-                  )}
-                  <Row label="Account id">
-                    <span className="font-mono text-xs">
-                      {github.providerAccountId}
-                    </span>
-                  </Row>
-                  <Row label="Linked">{github.linkedLabel}</Row>
-                </div>
-                <p className="text-muted-foreground/70 self-center text-xs leading-relaxed">
-                  Your college address{" "}
-                  <span className="text-foreground/80 font-mono">{email}</span>{" "}
-                  stays the primary identity. The GitHub email above is a
-                  separate mailbox; neither one displaces the other. Sign in
-                  with GitHub after your college email stops working.
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <p className="text-muted-foreground min-w-0 text-xs leading-relaxed">
-                  Link GitHub while your college email still works. When VIT
-                  revokes it, you sign in with GitHub instead. College address
-                  stays primary; the GitHub email is stored separately.
-                </p>
-                <Button
-                  variant="outline"
-                  className="h-9 shrink-0 gap-2 text-xs"
-                  disabled={busy}
-                  onClick={() =>
-                    authClient.linkSocial({
-                      provider: "github",
-                      callbackURL: "/account",
-                    })
-                  }
-                >
-                  <GithubIcon className="size-3.5" aria-hidden />
-                  Link GitHub
-                </Button>
-              </div>
-            )}
-
-            {actionData?.done === "github-unlinked" && (
-              <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
-                GitHub unlinked. This account now depends on the college email
-                and any recovery address you set.
-              </p>
-            )}
           </Panel>
         </div>
 
