@@ -160,13 +160,12 @@ export default function SignIn() {
                 current student should default to the college email, and only
                 users who have linked GitHub while their email still worked can
                 actually succeed here (socialProviders.github.disableSignUp is
-                on). Placed after the button so it never competes for first
-                click. */}
-            <div className="border-border mt-8 border-t pt-6">
-              <p className="text-muted-foreground/80 text-xs leading-relaxed">
-                Graduated and lost @vit.edu.in access? If you linked GitHub
-                while your college email still worked, you can sign in with it
-                instead.
+                on). Sized as a modest secondary, not a full-width CTA, so it
+                does not compete with Continue. */}
+            <div className="border-border mt-8 border-t pt-5">
+              <p className="text-muted-foreground/70 text-xs leading-relaxed">
+                Lost @vit.edu.in access after graduating? If you linked GitHub
+                while your college email still worked, sign in with it instead.
               </p>
               <Button
                 type="button"
@@ -178,9 +177,9 @@ export default function SignIn() {
                     callbackURL,
                   })
                 }
-                className="mt-4 h-10 w-full gap-2 text-xs font-medium"
+                className="mt-3 h-9 gap-2 text-xs font-normal"
               >
-                <GithubIcon className="size-4" aria-hidden />
+                <GithubIcon className="size-3.5" aria-hidden />
                 Sign in with GitHub
               </Button>
             </div>
