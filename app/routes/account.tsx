@@ -40,33 +40,78 @@ const SCOPE_COPY: Record<string, string> = {
 };
 
 // Server-only. Called from the /account loader when a GitHub account row
-// exists. The stored access token is a personal-scope token (not a GitHub App
-// installation token) so it does not expire. Any failure resolves to null;
-// the UI degrades to showing the numeric github id and no email, which is
-// still informative and does not block anything.
-async function fetchGithubPrimaryEmail(
+// exists, so this participates in the same Promise.all as sessions/apps rather
+// than trailing behind it. `login` renames over time, `id` does not, so the
+// display shows both and the id is what the audit log records. Failures
+// resolve to null on each field independently: the UI keeps rendering with
+// whatever came back.
+async function fetchGithubProfile(
   accessToken: string | null,
-): Promise<string | null> {
-  if (!accessToken) return null;
-  try {
-    const resp = await fetch("https://api.github.com/user/emails", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github+json",
-        "User-Agent": "vauth",
-      },
-    });
-    if (!resp.ok) return null;
-    const emails = (await resp.json()) as Array<{
+): Promise<{ login: string | null; primaryEmail: string | null }> {
+  if (!accessToken) return { login: null, primaryEmail: null };
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/vnd.github+json",
+    "User-Agent": "vauth",
+  };
+  const [userResp, emailsResp] = await Promise.all([
+    fetch("https://api.github.com/user", { headers }).catch(
+      () => null,
+    ) as Promise<Response | null>,
+    fetch("https://api.github.com/user/emails", { headers }).catch(
+      () => null,
+    ) as Promise<Response | null>,
+  ]);
+  let login: string | null = null;
+  let primaryEmail: string | null = null;
+  if (userResp?.ok) {
+    const u = (await userResp.json().catch(() => null)) as {
+      login?: string;
+    } | null;
+    login = u?.login ?? null;
+  }
+  if (emailsResp?.ok) {
+    const emails = (await emailsResp.json().catch(() => null)) as Array<{
       email: string;
       primary: boolean;
       verified: boolean;
-    }>;
-    const primary = emails.find((e) => e.primary && e.verified);
-    return primary?.email ?? null;
-  } catch {
-    return null;
+    }> | null;
+    primaryEmail =
+      emails?.find((e) => e.primary && e.verified)?.email ?? null;
   }
+  return { login, primaryEmail };
+}
+
+// Loads the linked GitHub row and its profile as one awaitable, so the
+// per-visit HTTP call to github runs in parallel with sessions/apps rather
+// than sequentially after them.
+async function loadLinkedGithub(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+) {
+  const [row] = await db
+    .select({
+      id: schema.account.id,
+      accountId: schema.account.accountId,
+      accessToken: schema.account.accessToken,
+      createdAt: schema.account.createdAt,
+    })
+    .from(schema.account)
+    .where(
+      and(
+        eq(schema.account.userId, userId),
+        eq(schema.account.providerId, GITHUB_PROVIDER_ID),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  const profile = await fetchGithubProfile(row.accessToken);
+  return {
+    providerAccountId: row.accountId,
+    login: profile.login,
+    primaryEmail: profile.primaryEmail,
+    linkedLabel: relativeTime(String(row.createdAt)),
+  };
 }
 
 // auth.api.getSession, not a fetch to /api/auth/get-session. The direct call is
@@ -77,39 +122,20 @@ export async function loader({ request }: Route.LoaderArgs) {
   if (!session) throw redirect("/sign-in");
 
   const db = getDb();
-  const [sessions, apps, githubRow] = await Promise.all([
+  const [sessions, apps, github] = await Promise.all([
     auth.api.listSessions({ headers: request.headers }),
     listConnectedApps(db, session.user.id),
-    // Single row per user, per provider. If it exists, GitHub is linked and the
-    // user retains access after @vit.edu.in expires. accountId is the stable
-    // GitHub user id, safe to display and safe as the audit-log correlate. The
-    // access token is only used server-side, in this same request, to look up
-    // the primary email so the user can see WHICH GitHub account they linked.
-    db
-      .select({
-        id: schema.account.id,
-        accountId: schema.account.accountId,
-        accessToken: schema.account.accessToken,
-        createdAt: schema.account.createdAt,
-      })
-      .from(schema.account)
-      .where(
-        and(
-          eq(schema.account.userId, session.user.id),
-          eq(schema.account.providerId, GITHUB_PROVIDER_ID),
-        ),
-      )
-      .limit(1),
+    loadLinkedGithub(db, session.user.id),
   ]);
 
   const role = (session.user.role ?? "user") as Role;
-  const github = githubRow[0]
-    ? {
-        providerAccountId: githubRow[0].accountId,
-        primaryEmail: await fetchGithubPrimaryEmail(githubRow[0].accessToken),
-        linkedLabel: relativeTime(String(githubRow[0].createdAt)),
-      }
-    : null;
+  // Presence of both env vars is what determines whether Better Auth actually
+  // registered the provider (see the conditional spread in auth.server.ts).
+  // The /account and /sign-in UIs read this to decide whether to render the
+  // GitHub buttons at all; without it, clicking gives `PROVIDER_NOT_FOUND`.
+  const githubEnabled = !!(
+    process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
+  );
 
   return {
     email: session.user.email,
@@ -119,6 +145,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     recoveryEmail: session.user.recoveryEmail ?? null,
     currentToken: session.session.token,
     github,
+    githubEnabled,
     apps: apps.map((a) => ({
       ...a,
       connectedLabel: relativeTime(a.connectedAt),
@@ -246,6 +273,7 @@ export default function Account({
     name,
     role,
     isAdmin,
+    githubEnabled,
     recoveryEmail,
     sessions,
     currentToken,
@@ -579,12 +607,22 @@ export default function Account({
           {/* Linked accounts -------------------------------------------- */}
           {/* Same theme as the recovery panel: keep this account alive after
               the college revokes the email. GitHub is the durable identity, the
-              recovery mailbox is the second escape hatch. Two orthogonal paths. */}
+              recovery mailbox is the second escape hatch. Two orthogonal paths.
+              Hidden entirely when the provider is not configured AND the user
+              has no existing link: the panel would render an empty card
+              telling the user nothing. */}
+          {(github || githubEnabled) && (
           <Panel
             title="Linked accounts"
             className="lg:col-span-6"
             action={
-              github && (
+              // Only surface Unlink when the user has a documented fallback
+              // (verified recovery email). Better Auth's account table has no
+              // credential row for email-OTP users, so a lone GitHub row IS
+              // the last account: unlinking without a recovery address strands
+              // the exact user this feature exists for. See the
+              // `allowUnlinkingAll` note in auth.server.ts.
+              github && recoveryEmail && (
                 <Form method="post">
                   <input
                     type="hidden"
@@ -606,7 +644,9 @@ export default function Account({
               <div className="min-w-0">
                 <div className="mb-1 flex items-center gap-2.5">
                   <GithubIcon className="size-4 shrink-0" aria-hidden />
-                  <span className="text-sm font-medium">GitHub</span>
+                  <span className="text-sm font-medium">
+                    {github.login ? `@${github.login}` : "GitHub"}
+                  </span>
                   <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-500">
                     Linked
                   </span>
@@ -628,9 +668,16 @@ export default function Account({
                   Your college address stays the primary identity. The GitHub
                   email above is a separate mailbox; neither one displaces the
                   other.
+                  {!recoveryEmail && (
+                    <>
+                      {" "}
+                      Add a recovery email to unlink this later without
+                      locking yourself out.
+                    </>
+                  )}
                 </p>
               </div>
-            ) : (
+            ) : githubEnabled ? (
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <p className="text-muted-foreground min-w-0 text-xs leading-relaxed">
                   Link GitHub while your college email still works. When VIT
@@ -645,6 +692,9 @@ export default function Account({
                     authClient.linkSocial({
                       provider: "github",
                       callbackURL: "/account",
+                      // Steer OAuth failures back to /account so we can render
+                      // a real sentence instead of better-auth's `/error?...`.
+                      errorCallbackURL: "/account?error=link_github",
                     })
                   }
                 >
@@ -652,7 +702,7 @@ export default function Account({
                   Link GitHub
                 </Button>
               </div>
-            )}
+            ) : null}
 
             {actionData?.done === "github-unlinked" && (
               <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
@@ -661,6 +711,7 @@ export default function Account({
               </p>
             )}
           </Panel>
+          )}
 
           {/* Sessions ---------------------------------------------------- */}
           <Panel
