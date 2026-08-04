@@ -136,7 +136,9 @@ function buildAuth() {
             github: {
               clientId: process.env.GITHUB_CLIENT_ID,
               clientSecret: process.env.GITHUB_CLIENT_SECRET,
-              scope: ["read:user", "user:email"],
+              // Default scopes (`read:user`, `user:email`) are added by the
+              // github provider factory itself; setting them here again would
+              // duplicate them in the authorization URL.
               disableSignUp: true,
             },
           },
@@ -158,6 +160,15 @@ function buildAuth() {
     },
 
     account: {
+      // GitHub returns a non-expiring personal-scope access token carrying
+      // `read:user` + `user:email`. Persisting it in cleartext in Neon would
+      // add standing blast radius to a passwordless identity provider, so
+      // encrypt at rest with the BETTER_AUTH_SECRET. Better Auth's
+      // `setTokenUtil` gates encryption on this flag (see oauth2/utils.mjs),
+      // and the value is NOT retroactive: rows written before this landed
+      // stay plaintext, so any pre-flag `provider_id='github'` account rows
+      // should be dropped and re-linked before real users depend on it.
+      encryptOAuthTokens: true,
       accountLinking: {
         // Manual link via /account is the only supported linking path. A
         // student's @vit.edu.in mailbox will never match their personal GitHub
@@ -171,17 +182,30 @@ function buildAuth() {
         // already gated off by `disableSignUp: true` above.
         allowDifferentEmails: true,
         disableImplicitLinking: true,
-        // Better Auth refuses to remove the last account by default, which
-        // would strand a user who linked GitHub and later wants to unlink it
-        // (email-OTP does not create an `account` row of its own, so a lone
-        // GitHub row IS the last one). Safe to allow here: the @vit.edu.in
-        // OTP path in `emailOTP` above is not gated on any account row, so a
-        // user with zero linked accounts can still sign in as long as the
-        // college mailbox works. Post-graduation, unlinking is the wrong
-        // move anyway; the UI does not surface unlink to users with no other
-        // way in.
+        // Better Auth refuses to remove the last account by default, and
+        // email-OTP does not create an `account` row, so a lone GitHub row IS
+        // the last account for every user. Allowing unlink is safe as an auth
+        // primitive because @vit.edu.in OTP is not gated on the account
+        // table; the UI in `app/routes/account.tsx` is what actually protects
+        // an alumnus signed in via GitHub with no other way in: the Unlink
+        // button is only rendered when a verified `recoveryEmail` exists.
         allowUnlinkingAll: true,
       },
+    },
+
+    session: {
+      // Better Auth's `freshSessionMiddleware` fences /unlink-account (and
+      // /change-password, /delete-user etc.) behind `now - session.createdAt
+      // < freshAge`, defaulting to 86400s. Session refresh touches only
+      // `expiresAt`/`updatedAt`, never `createdAt`, so on the default 7-day
+      // session the Unlink form 403s for six of every seven days. vauth has
+      // no re-auth flow that could refresh the fresh-clock (passwordless,
+      // and the sensitive endpoints gated by this middleware other than
+      // /unlink-account are all disabled here). Setting `freshAge: 0`
+      // disables the gate globally, which for this IdP is the right shape:
+      // holding a valid session cookie already required proving the
+      // institutional mailbox works.
+      freshAge: 0,
     },
 
     // No backgroundTasks handler, deliberately. better-auth only awaits deferred
