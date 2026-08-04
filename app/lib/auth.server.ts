@@ -193,21 +193,6 @@ function buildAuth() {
       },
     },
 
-    session: {
-      // Better Auth's `freshSessionMiddleware` fences /unlink-account (and
-      // /change-password, /delete-user etc.) behind `now - session.createdAt
-      // < freshAge`, defaulting to 86400s. Session refresh touches only
-      // `expiresAt`/`updatedAt`, never `createdAt`, so on the default 7-day
-      // session the Unlink form 403s for six of every seven days. vauth has
-      // no re-auth flow that could refresh the fresh-clock (passwordless,
-      // and the sensitive endpoints gated by this middleware other than
-      // /unlink-account are all disabled here). Setting `freshAge: 0`
-      // disables the gate globally, which for this IdP is the right shape:
-      // holding a valid session cookie already required proving the
-      // institutional mailbox works.
-      freshAge: 0,
-    },
-
     // No backgroundTasks handler, deliberately. better-auth only awaits deferred
     // work when this is absent (see runInBackgroundOrAwait in create-context.mjs).
     // Awaiting keeps the OTP send inside the request, which is the only way to know
