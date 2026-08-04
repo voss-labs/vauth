@@ -255,28 +255,48 @@ function buildAuth() {
         // Fires for any provider (credential, oauth callbacks, /link-social).
         // Filter to github so the audit log stays a signal of federated-identity
         // changes, not noise from the primary OTP flow.
+        //
+        // Every other audit call site in the app passes actor email + the
+        // incoming request so the row retains an IP and a user agent after
+        // the account row it points at is gone (see the comment on `actorId`
+        // in `app/db/audit.ts`). `databaseHooks` hands us the endpoint
+        // context, which carries both. Wrapped in try/catch so a Neon hiccup
+        // in the audit write does not 500 the operation being audited: the
+        // account row change has already committed by the time these fire.
         create: {
-          after: async (account) => {
+          after: async (account, ctx) => {
             if (account.providerId !== GITHUB_PROVIDER_ID) return;
-            await audit(getDb(), {
-              action: "user.github_linked",
-              actorId: account.userId,
-              targetType: "account",
-              targetId: account.id,
-              details: { providerAccountId: account.accountId },
-            });
+            try {
+              await audit(getDb(), {
+                action: "user.github_linked",
+                actorId: account.userId,
+                actorEmail: ctx?.context.session?.user?.email ?? null,
+                targetType: "account",
+                targetId: account.id,
+                details: { providerAccountId: account.accountId },
+                request: ctx?.request,
+              });
+            } catch (err) {
+              console.error("audit user.github_linked failed", err);
+            }
           },
         },
         delete: {
-          after: async (account) => {
+          after: async (account, ctx) => {
             if (account.providerId !== GITHUB_PROVIDER_ID) return;
-            await audit(getDb(), {
-              action: "user.github_unlinked",
-              actorId: account.userId,
-              targetType: "account",
-              targetId: account.id,
-              details: { providerAccountId: account.accountId },
-            });
+            try {
+              await audit(getDb(), {
+                action: "user.github_unlinked",
+                actorId: account.userId,
+                actorEmail: ctx?.context.session?.user?.email ?? null,
+                targetType: "account",
+                targetId: account.id,
+                details: { providerAccountId: account.accountId },
+                request: ctx?.request,
+              });
+            } catch (err) {
+              console.error("audit user.github_unlinked failed", err);
+            }
           },
         },
       },
