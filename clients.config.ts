@@ -47,4 +47,22 @@ export const clients: TrustedClient[] = [
     scopes: ["openid", "profile", "email"],
     firstParty: true,
   },
+  {
+    name: "vroom",
+    description:
+      "Open discussion rooms for the college. Any VIT student can read and post without being invited, which is the one thing a WhatsApp group cannot do.",
+    // localhost:3001 as well as :3000 so a contributor can run vroom and VERP at
+    // the same time without either having to move.
+    redirectUris: [
+      "https://vroom.vosslabs.org/api/auth/oauth2/callback/voss",
+      "http://localhost:3000/api/auth/oauth2/callback/voss",
+      "http://localhost:3001/api/auth/oauth2/callback/voss",
+    ],
+    // vroom needs a name to show beside a post and an email to prove the person
+    // is a VIT student. It asks for nothing else: the roll number, branch and
+    // year it displays are collected by vroom itself at onboarding, because the
+    // vauth user table deliberately never grows product columns.
+    scopes: ["openid", "profile", "email"],
+    firstParty: true,
+  },
 ];
