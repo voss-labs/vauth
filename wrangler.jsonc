@@ -35,6 +35,21 @@
     // has to reach a human.
     "EMAIL_FROM": "VOSS Labs <accounts@vosslabs.org>"
   },
+  "observability": {
+    "enabled": false,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": false,
+      "persist": true,
+      "head_sampling_rate": 1
+    }
+  },
   "routes": [
     {
       "pattern": "accounts.vosslabs.org",
