@@ -10,11 +10,13 @@ import * as schema from "~/db";
 import {
   ADMIN_ROLES,
   ALLOWED_EMAIL_DOMAINS_LABEL,
+  GITHUB_PROVIDER_ID,
   ROLES,
   deriveName,
   isInstitutionalEmail,
 } from "~/lib/config";
 import { ac, roles } from "~/lib/permissions";
+import { audit } from "~/lib/audit.server";
 import { sendOTP } from "~/lib/email.server";
 import { kvRateLimitStorage } from "~/lib/rate-limit-kv";
 
@@ -116,6 +118,33 @@ function buildAuth() {
       },
     },
 
+    // GitHub is a linkable identity, never a signup path. First sign-in is
+    // always the @vit.edu.in OTP flow above, which proves current affiliation;
+    // linking on /account then pins a durable identity that survives the day
+    // VIT revokes the mailbox. `disableSignUp: true` is the affiliation gate:
+    // a GitHub sign-in without a pre-existing user is rejected outright, so no
+    // one can create a VOSS account without ever verifying a college address.
+    //
+    // GitHub OAuth is federated identity, not a stored secret, so CONTRIBUTING
+    // rule 1 (no passwords) still holds; scrypt still stays out of the request
+    // path. And the provider is registered only when both env vars are present,
+    // so a dev environment without credentials simply does not advertise it,
+    // matching how missing RESEND_API_KEY falls back to console-logged OTPs.
+    ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
+      ? {
+          socialProviders: {
+            github: {
+              clientId: process.env.GITHUB_CLIENT_ID,
+              clientSecret: process.env.GITHUB_CLIENT_SECRET,
+              // Default scopes (`read:user`, `user:email`) are added by the
+              // github provider factory itself; setting them here again would
+              // duplicate them in the authorization URL.
+              disableSignUp: true,
+            },
+          },
+        }
+      : {}),
+
     user: {
       additionalFields: {
         // Survives graduation. VIT revokes @vit.edu.in on a known date, and with
@@ -127,6 +156,40 @@ function buildAuth() {
           required: false,
           input: false,
         },
+      },
+    },
+
+    account: {
+      // GitHub returns a non-expiring personal-scope access token carrying
+      // `read:user` + `user:email`. Persisting it in cleartext in Neon would
+      // add standing blast radius to a passwordless identity provider, so
+      // encrypt at rest with the BETTER_AUTH_SECRET. Better Auth's
+      // `setTokenUtil` gates encryption on this flag (see oauth2/utils.mjs),
+      // and the value is NOT retroactive: rows written before this landed
+      // stay plaintext, so any pre-flag `provider_id='github'` account rows
+      // should be dropped and re-linked before real users depend on it.
+      encryptOAuthTokens: true,
+      accountLinking: {
+        // Manual link via /account is the only supported linking path. A
+        // student's @vit.edu.in mailbox will never match their personal GitHub
+        // email, so the default same-email requirement would block every real
+        // user. `disableImplicitLinking` closes the other side of the same door:
+        // Better Auth otherwise auto-links on sign-in when a matching email is
+        // found via a trusted provider, and we do not want a stray email match
+        // to attach the wrong GitHub identity to a VIT account. The takeover
+        // risk called out on `allowDifferentEmails` does not apply here because
+        // linking is behind an authenticated session and github signup is
+        // already gated off by `disableSignUp: true` above.
+        allowDifferentEmails: true,
+        disableImplicitLinking: true,
+        // Better Auth refuses to remove the last account by default, and
+        // email-OTP does not create an `account` row, so a lone GitHub row IS
+        // the last account for every user. Allowing unlink is safe as an auth
+        // primitive because @vit.edu.in OTP is not gated on the account
+        // table; the UI in `app/routes/account.tsx` is what actually protects
+        // an alumnus signed in via GitHub with no other way in: the Unlink
+        // button is only rendered when a verified `recoveryEmail` exists.
+        allowUnlinkingAll: true,
       },
     },
 
@@ -170,6 +233,55 @@ function buildAuth() {
             // dance has already succeeded.
             const name = user.name?.trim() || deriveName(user.email);
             return { data: { ...user, name, role: ROLES.USER } };
+          },
+        },
+      },
+      account: {
+        // Fires for any provider (credential, oauth callbacks, /link-social).
+        // Filter to github so the audit log stays a signal of federated-identity
+        // changes, not noise from the primary OTP flow.
+        //
+        // Every other audit call site in the app passes actor email + the
+        // incoming request so the row retains an IP and a user agent after
+        // the account row it points at is gone (see the comment on `actorId`
+        // in `app/db/audit.ts`). `databaseHooks` hands us the endpoint
+        // context, which carries both. Wrapped in try/catch so a Neon hiccup
+        // in the audit write does not 500 the operation being audited: the
+        // account row change has already committed by the time these fire.
+        create: {
+          after: async (account, ctx) => {
+            if (account.providerId !== GITHUB_PROVIDER_ID) return;
+            try {
+              await audit(getDb(), {
+                action: "user.github_linked",
+                actorId: account.userId,
+                actorEmail: ctx?.context.session?.user?.email ?? null,
+                targetType: "account",
+                targetId: account.id,
+                details: { providerAccountId: account.accountId },
+                request: ctx?.request,
+              });
+            } catch (err) {
+              console.error("audit user.github_linked failed", err);
+            }
+          },
+        },
+        delete: {
+          after: async (account, ctx) => {
+            if (account.providerId !== GITHUB_PROVIDER_ID) return;
+            try {
+              await audit(getDb(), {
+                action: "user.github_unlinked",
+                actorId: account.userId,
+                actorEmail: ctx?.context.session?.user?.email ?? null,
+                targetType: "account",
+                targetId: account.id,
+                details: { providerAccountId: account.accountId },
+                request: ctx?.request,
+              });
+            } catch (err) {
+              console.error("audit user.github_unlinked failed", err);
+            }
           },
         },
       },

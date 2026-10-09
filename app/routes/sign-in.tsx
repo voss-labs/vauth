@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
+import type { Route } from "./+types/sign-in";
 import { authClient } from "~/lib/auth-client";
 import {
   ALLOWED_EMAIL_DOMAINS_LABEL,
   isInstitutionalEmail,
 } from "~/lib/config";
+import { GithubIcon } from "~/components/github-icon";
 import { VossMark } from "~/components/voss-mark";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -25,14 +27,47 @@ export function meta() {
   ];
 }
 
+// Presence of both env vars is what tells auth.server.ts to register the
+// provider. If we render the GitHub button unconditionally, clicking it when
+// unconfigured redirects to better-auth's raw `/api/auth/error` page.
+export async function loader() {
+  return {
+    githubEnabled: !!(
+      process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
+    ),
+  };
+}
+
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
 
+// Errors surfaced from better-auth's OAuth callback via `errorCallbackURL`
+// come back as `?error=github&error_code=...`. Rendered inline instead of
+// dumping the user on the raw better-auth error page.
+const GITHUB_ERROR_MESSAGES: Record<string, string> = {
+  signup_disabled:
+    "This GitHub account has not been linked yet. Sign in with your college email first, then link GitHub from your account page.",
+  account_already_linked_to_different_user:
+    "This GitHub account is already linked to a different VOSS user.",
+};
+
+function messageForGithubError(code: string | null): string {
+  if (!code) return "Could not sign in with GitHub. Try the college email flow instead.";
+  return (
+    GITHUB_ERROR_MESSAGES[code] ??
+    "Could not sign in with GitHub. Try the college email flow instead."
+  );
+}
+
 type Step = "email" | "code";
 
-export default function SignIn() {
+export default function SignIn({ loaderData }: Route.ComponentProps) {
+  const { githubEnabled } = loaderData;
+
   const [params] = useSearchParams();
   const callbackURL = params.get("redirect") ?? "/";
+  const githubErrorCode =
+    params.get("error") === "github" ? params.get("error_code") : null;
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
@@ -154,6 +189,50 @@ export default function SignIn() {
             >
               {busy ? "Sending code…" : "Continue"}
             </Button>
+
+            {/* The alumni entry. Hidden below the primary OTP flow because a
+                current student should default to the college email, and only
+                users who have linked GitHub while their email still worked can
+                actually succeed here (socialProviders.github.disableSignUp is
+                on). Sized as a modest secondary, not a full-width CTA, so it
+                does not compete with Continue. Hidden entirely when the
+                provider is not configured, since clicking then hits
+                better-auth's raw error page. */}
+            {githubEnabled && (
+              <div className="border-border mt-8 border-t pt-5">
+                <p className="text-muted-foreground/70 text-xs leading-relaxed">
+                  Lost @vit.edu.in access after graduating? If you linked GitHub
+                  while your college email still worked, sign in with it
+                  instead.
+                </p>
+                {githubErrorCode !== null && (
+                  <p
+                    role="alert"
+                    className="text-destructive mt-3 text-xs leading-relaxed"
+                  >
+                    {messageForGithubError(githubErrorCode)}
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() =>
+                    authClient.signIn.social({
+                      provider: "github",
+                      callbackURL,
+                      // Steer OAuth failures back to this page so we can render
+                      // a real sentence instead of better-auth's `/error?...`.
+                      errorCallbackURL: "/sign-in?error=github",
+                    })
+                  }
+                  className="mt-3 h-9 gap-2 text-xs font-normal"
+                >
+                  <GithubIcon className="size-3.5" aria-hidden />
+                  Sign in with GitHub
+                </Button>
+              </div>
+            )}
           </form>
         ) : (
           <div>

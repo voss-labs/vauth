@@ -18,6 +18,8 @@ npm run dev
 
 Without `RESEND_API_KEY`, OTP codes print to the console instead of being emailed.
 
+GitHub sign-in is optional in dev. Without `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`, the provider is not advertised and the primary @vit.edu.in OTP flow is unaffected. To exercise linking locally, register a GitHub OAuth App with callback URL `http://localhost:5173/api/auth/callback/github` and scopes `read:user`, `user:email`.
+
 ## Before you open a PR
 
 ```sh
