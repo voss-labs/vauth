@@ -253,10 +253,7 @@ async function main() {
       secretBox([
         ["VOSS_CLIENT_ID", issued.clientId],
         ["VOSS_CLIENT_SECRET", issued.clientSecret],
-        [
-          "VOSS_DISCOVERY_URL",
-          `${process.env.BETTER_AUTH_URL}/api/auth/.well-known/openid-configuration`,
-        ],
+        ["VOSS_DISCOVERY_URL", DISCOVERY_URL],
       ]),
       `${client.name} — copy into its .env now`,
     );
