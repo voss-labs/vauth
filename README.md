@@ -26,6 +26,8 @@ That is the `discoveryUrl` a relying party configures. `/.well-known/oauth-autho
 
 PKCE `S256` is mandatory. There is no implicit grant and no password grant.
 
+Adding vauth sign-in to a product: [INTEGRATING.md](INTEGRATING.md).
+
 ## Stack
 
 React Router 8 (framework mode, SSR) on Cloudflare Workers, Better Auth + `@better-auth/oauth-provider`, Drizzle, Neon Postgres, Resend, shadcn/ui.
